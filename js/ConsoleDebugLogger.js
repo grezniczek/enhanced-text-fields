@@ -249,3 +249,5 @@ const ConsoleDebugLogger = {
 		return configureLogger(cfg);
 	}
 };
+
+globalThis.ConsoleDebugLogger = ConsoleDebugLogger;
