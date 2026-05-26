@@ -25,6 +25,7 @@
 - For any reasonably complex JS to be delivered to the client, prefer to do so in a JS file.
 - In JS files, avoid to litter the global scope. Wrap stuff in an IEFE and expose only a minimal public interface (usually for taking initial config, or to expose public hooks or methods).
 - jQuery is available in REDCap. Prefer using it over direct DOM manipulation (unless trivial or necessary).
+- Make use of ConsoleDebugLogger.js and the javascript-debug project setting to output useful debug info to the console, e.g. to show initial config, or results of complex-ish operations.
 
 
 ## External Module Framework
