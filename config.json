@@ -19,6 +19,10 @@
 		{
 			"tag": "@MARKDOWN-VIEWER",
 			"description": "TODO"
+		},
+		{
+			"tag": "@FILE-TEXT-VIEWER",
+			"description": "TODO - Supports MD/JSON viewing of uploaded files"
 		}
 	],
 	"project-settings": [
