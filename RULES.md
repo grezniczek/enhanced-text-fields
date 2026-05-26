@@ -41,3 +41,7 @@
 - The repo is in WSL/Ubuntu: \\wsl.localhost\Ubuntu\home\gr\redcap\dev-modules\text_viewers_v9.9.9\
 - Use php and node from WSL for tests etc.
 - Suggest to install tools if needed.
+
+# Workflow
+
+- For each completed work slice, suggest a concise commit message.
