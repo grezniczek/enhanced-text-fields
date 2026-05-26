@@ -1,0 +1,31 @@
+{
+	"name": "Text Viewers",
+	"namespace": "DE\\RUB\\SEG\\TextViewersExternalModule",
+	"description": "TODO",
+	"documentation": "README.md",
+	"authors": [
+		{
+			"name": "Günther Rezniczek",
+			"email": "guenther.rezniczek@rub.de",
+			"institution": "St. Elisabethgruppe GmbH - Marien Hospital Herne | Klinikum der Ruhr-Universität Bochum"
+		}
+	],
+	"framework-version": 16,
+	"action-tags": [
+		{
+			"tag": "@JSON-VIEWER",
+			"description": "TODO"
+		},
+		{
+			"tag": "@MARKDOWN-VIEWER",
+			"description": "TODO"
+		}
+	],
+	"project-settings": [
+		{
+			"key": "javascript-debug",
+			"name": "Output debug information to the browser console",
+			"type": "checkbox"
+		}
+	]
+}
