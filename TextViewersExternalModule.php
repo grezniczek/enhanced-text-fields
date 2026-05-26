@@ -154,10 +154,17 @@ class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
 		);
 		$tags = array(self::AT_JSON_VIEWER, self::AT_MARKDOWN_VIEWER);
 		$action_tags = ActionTagHelper::getActionTags($tags, null, $instrument, $context);
+		$metadata_by_field = $this->getMetadataByField($instrument, $context);
+		$is_survey_page = $this->isSurveyPage();
 		$viewer_fields = array();
 
 		foreach ($action_tags as $action_tag => $fields) {
-			foreach (array_keys($fields) as $field_name) {
+			foreach ($fields as $field_name => $tag_info) {
+				if (!isset($metadata_by_field[$field_name])) {
+					continue;
+				}
+				$metadata = $metadata_by_field[$field_name];
+				$field_type = $metadata['field_type'] ?? '';
 				if (!isset($viewer_fields[$field_name])) {
 					$viewer_fields[$field_name] = array(
 						'name' => $field_name,
@@ -168,12 +175,109 @@ class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
 					$viewer_fields[$field_name]['viewers'][] = 'json';
 				}
 				if ($action_tag === self::AT_MARKDOWN_VIEWER) {
+					if ($field_type !== 'notes') {
+						continue;
+					}
 					$viewer_fields[$field_name]['viewers'][] = 'markdown';
+					$field_annotation = $metadata['field_annotation'] ?? '';
+					$markdown_params = $this->parseMarkdownViewerParams($tag_info['params'] ?? '');
+					$viewer_fields[$field_name]['markdown'] = array(
+						'readonly' => \Form::disableFieldViaActionTag($field_annotation, $is_survey_page),
+						'initialMode' => $markdown_params['initialMode'],
+						'mdOnly' => $markdown_params['mdOnly'],
+					);
 				}
 			}
 		}
 
+		$viewer_fields = array_filter($viewer_fields, function ($field) {
+			return !empty($field['viewers']);
+		});
 		return array_values($viewer_fields);
+	}
+
+	/**
+	 * Parses @MARKDOWN-VIEWER parameters.
+	 *
+	 * @param mixed $params Raw action-tag parameter value.
+	 * @return array
+	 */
+	private function parseMarkdownViewerParams($params)
+	{
+		$config = array(
+			'initialMode' => 'raw',
+			'mdOnly' => false,
+		);
+		$value = trim((string)$params);
+		if ($value === '') {
+			return $config;
+		}
+
+		$decoded = json_decode($value, true);
+		if (is_string($decoded)) {
+			$value = $decoded;
+		}
+		else {
+			$value = trim($value, "\"'");
+		}
+
+		$tokens = array_map('trim', explode(',', strtolower($value)));
+		foreach ($tokens as $token) {
+			if ($token === '') {
+				continue;
+			}
+			if ($token === 'md-only') {
+				$config['mdOnly'] = true;
+				$config['initialMode'] = 'markdown';
+				continue;
+			}
+			if (strpos($token, 'initial:') === 0) {
+				$mode = trim(substr($token, strlen('initial:')));
+				if ($mode === 'md') {
+					$config['initialMode'] = 'markdown';
+				}
+				if ($mode === 'raw') {
+					$config['initialMode'] = 'raw';
+				}
+			}
+		}
+
+		if ($config['mdOnly']) {
+			$config['initialMode'] = 'markdown';
+		}
+		return $config;
+	}
+
+	/**
+	 * Returns data dictionary rows keyed by field name.
+	 *
+	 * @param string $instrument Current instrument name.
+	 * @param array  $context    Context for evaluating @IF action tags.
+	 * @return array
+	 */
+	private function getMetadataByField($instrument, $context)
+	{
+		$metadata_json = \REDCap::getDataDictionary('json', false, null, $instrument);
+		$metadata_rows = json_decode($metadata_json, true);
+		$metadata_by_field = array();
+		if (!is_array($metadata_rows)) {
+			return $metadata_by_field;
+		}
+
+		foreach ($metadata_rows as $metadata) {
+			$field_name = $metadata['field_name'] ?? '';
+			if ($field_name === '') {
+				continue;
+			}
+			$field_annotation = $metadata['field_annotation'] ?? '';
+			if (is_array($context) && strpos($field_annotation, "@IF") !== false) {
+				$field_annotation = \Form::replaceIfActionTag($field_annotation, $context['project_id'] ?? null, $context['record'] ?? null, $context['event_id'] ?? null, $context['instrument'] ?? null, $context['instance'] ?? 1);
+				$metadata['field_annotation'] = $field_annotation;
+			}
+			$metadata_by_field[$field_name] = $metadata;
+		}
+
+		return $metadata_by_field;
 	}
 
 	/**
