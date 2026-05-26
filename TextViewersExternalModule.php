@@ -128,7 +128,7 @@ class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
 		$inject->js('js/rc-viewers.js');
 		?>
 		<script type="text/javascript">
-			REDCapTextViewers.init(<?= $config_json ?>);
+			DE_RUB_SEG_TextViewersEM.init(<?= $config_json ?>);
 		</script>
 		<?php
 	}
@@ -185,6 +185,7 @@ class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
 						'readonly' => \Form::disableFieldViaActionTag($field_annotation, $is_survey_page),
 						'initialMode' => $markdown_params['initialMode'],
 						'mdOnly' => $markdown_params['mdOnly'],
+						'rowConfig' => in_array($metadata['custom_alignment'], ['LH', 'LV']) ? 'full' : 'split',
 					);
 				}
 			}

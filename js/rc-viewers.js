@@ -2,7 +2,8 @@
 (function (global, $) {
 	'use strict';
 
-	const NS = 'REDCapTextViewers';
+	const NS = 'DE_RUB_SEG_TextViewersEM';
+	const EM_NAME = 'Text Viewers';
 	const VIEW_RAW = 'raw';
 	const VIEW_MARKDOWN = 'markdown';
 	const LAYOUT_NORMAL = 'normal';
@@ -15,7 +16,7 @@
 	}
 
 	const LOGGER = global.ConsoleDebugLogger
-		? global.ConsoleDebugLogger.create({ name: NS })
+		? global.ConsoleDebugLogger.create({ name: EM_NAME })
 		: makeFallbackLogger();
 
 	const state = {
