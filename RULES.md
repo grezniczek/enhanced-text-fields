@@ -34,6 +34,8 @@
 
 - If peeking into code is necessary, ask first and then look here: \\wsl.localhost\Ubuntu\home\gr\redcap\external_modules
 
+- Class autoloading is not available automatically for this module. Add or maintain a small module-local autoloader, or explicitly include/require helper classes before using them.
+
 # Environment
 
 - The repo is in WSL/Ubuntu: \\wsl.localhost\Ubuntu\home\gr\redcap\dev-modules\text_viewers_v9.9.9\
