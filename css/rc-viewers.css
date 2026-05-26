@@ -1,1 +1,70 @@
-/* CSS for REDCap Viewers EM */
+/* css/rc-viewers.css */
+.rc-text-viewer {
+	border: 1px solid #d4d8dd;
+	border-radius: 4px;
+	background: #fff;
+	margin-top: 8px;
+	max-width: 100%;
+	overflow: hidden;
+}
+
+.rc-text-viewer__toolbar {
+	align-items: center;
+	background: #f5f6f7;
+	border-bottom: 1px solid #d4d8dd;
+	color: #333;
+	display: flex;
+	font-size: 12px;
+	gap: 12px;
+	justify-content: space-between;
+	line-height: 1.3;
+	padding: 6px 8px;
+}
+
+.rc-text-viewer__title {
+	font-weight: 600;
+}
+
+.rc-text-viewer__status {
+	color: #6b7280;
+	font-size: 11px;
+	text-align: right;
+}
+
+.rc-text-viewer--invalid .rc-text-viewer__status {
+	color: #b00020;
+}
+
+.rc-text-viewer__body {
+	max-height: 520px;
+	overflow: auto;
+}
+
+.rc-text-viewer--markdown .rc-text-viewer__body {
+	padding: 12px;
+}
+
+.rc-text-viewer--markdown .markdown-body {
+	background: transparent;
+	box-sizing: border-box;
+	font-size: 14px;
+	max-width: none;
+	min-width: 0;
+}
+
+.rc-text-viewer__ace {
+	height: 320px;
+	min-height: 160px;
+	width: 100%;
+}
+
+.rc-text-viewer__fallback {
+	background: #fbfbfc;
+	color: #24292f;
+	font-family: Consolas, Monaco, "Courier New", monospace;
+	font-size: 12px;
+	margin: 0;
+	overflow: auto;
+	padding: 10px;
+	white-space: pre-wrap;
+}

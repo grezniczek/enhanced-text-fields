@@ -1,7 +1,7 @@
 {
 	"name": "Text Viewers",
 	"namespace": "DE\\RUB\\SEG\\TextViewersExternalModule",
-	"description": "TODO",
+	"description": "Adds live JSON and Markdown viewers to text fields with matching action tags.",
 	"documentation": "README.md",
 	"authors": [
 		{
@@ -14,15 +14,15 @@
 	"action-tags": [
 		{
 			"tag": "@JSON-VIEWER",
-			"description": "TODO"
+			"description": "Render the field value as formatted JSON below the field on data entry forms and survey pages."
 		},
 		{
 			"tag": "@MARKDOWN-VIEWER",
-			"description": "TODO"
+			"description": "Render the field value as Markdown below the field on data entry forms and survey pages."
 		},
 		{
 			"tag": "@FILE-TEXT-VIEWER",
-			"description": "TODO - Supports MD/JSON viewing of uploaded files"
+			"description": "Reserved for MD/JSON viewing of uploaded files."
 		}
 	],
 	"project-settings": [

@@ -57,6 +57,9 @@ class ActionTagHelper
                 $field_annotation = \Form::replaceIfActionTag($field_annotation, $context['project_id'] ?? null, $context['record'] ?? null, $context['event_id'] ?? null, $context['instrument'] ?? null, $context['instance'] ?? 1);
             }
             $parsed_tags = self::parseActionTags($field_annotation);
+            if (empty($parsed_tags)) {
+                continue;
+            }
             // Plugin::log($tags, "DEBUG", "TAGS for $field_name");
             foreach ($parsed_tags as $tag) {
                 // All action-tags should be parsed as uppercase
