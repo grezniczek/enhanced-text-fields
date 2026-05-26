@@ -272,14 +272,14 @@
 		const markdownConfig = field.markdown || {};
 		const mdOnly = !!markdownConfig.mdOnly;
 		const $row = $(`tr[sq_id="${escapeSelector(fieldName)}"]`).first();
-		const canExpandToRowWidth = $control.closest('td.data').length > 0;
+		const canExpandToRowWidth = field.rowConfig === 'split';
 		const $expandLink = $('#' + escapeSelector(fieldName) + '-expand');
 		const $toolbar = $('<div/>', {
 			class: 'rc-text-viewer-md-toolbar d-print-none',
 			'data-rc-text-viewer-field': fieldName,
 		});
 		const $tabs = $('<span/>', { class: 'rc-text-viewer-md-tabs' });
-		const rawLabel = markdownConfig.readonly ? 'Raw' : 'Raw (Edit)';
+		const rawLabel = field.readonly ? 'Raw' : 'Raw (Edit)';
 		const $rawTab = $('<a/>', {
 			href: 'javascript:;',
 			class: 'rc-text-viewer-md-tab',
@@ -342,7 +342,7 @@
 			bodyOverflow: null,
 		};
 
-		if (markdownConfig.readonly) {
+		if (field.readonly) {
 			applyMarkdownReadonly($control, $row);
 		}
 
@@ -463,6 +463,7 @@
 	 * @returns {void}
 	 */
 	function updateMarkdownToolbar(controller) {
+		LOGGER.log(`Updating Markdown toolbar for '${controller.fieldName}' in mode '${controller.mode}' and layout '${controller.layout}'`, controller);
 		const isMarkdown = controller.mode === VIEW_MARKDOWN;
 		controller.$toolbar.find('[data-rc-md-mode]').each(function () {
 			const $tab = $(this);
@@ -470,10 +471,10 @@
 			$tab.toggleClass('active', active);
 			$tab.attr('aria-current', active ? 'true' : 'false');
 		});
-		controller.$actions.attr('style', '');
-		controller.$expandButton.attr('style', '');
-		controller.$fullscreenButton.attr('style', '');
-		controller.$collapseButton.attr('style', '');
+		controller.$actions[isMarkdown ? 'show' : 'hide']();
+		controller.$expandButton[controller.canExpandToRowWidth && controller.layout !== LAYOUT_EXPANDED ? 'show' : 'hide']();
+		controller.$fullscreenButton[controller.layout !== LAYOUT_FULLSCREEN ? 'show' : 'hide']();
+		controller.$collapseButton[controller.canCollapse || controller.layout === LAYOUT_FULLSCREEN || controller.layout === LAYOUT_EXPANDED ? 'show' : 'hide']();
 		controller.$toolbar
 			.attr('data-rc-md-layout', controller.layout)
 			.toggleClass('rc-text-viewer-md-toolbar--markdown', isMarkdown);

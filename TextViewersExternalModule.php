@@ -164,11 +164,14 @@ class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
 					continue;
 				}
 				$metadata = $metadata_by_field[$field_name];
+				$field_annotation = $metadata['field_annotation'] ?? '';
 				$field_type = $metadata['field_type'] ?? '';
 				if (!isset($viewer_fields[$field_name])) {
 					$viewer_fields[$field_name] = array(
 						'name' => $field_name,
 						'viewers' => array(),
+						'readonly' => \Form::disableFieldViaActionTag($field_annotation, $is_survey_page),
+						'rowConfig' => in_array($metadata['custom_alignment'], ['LH', 'LV']) ? 'full' : 'split',
 					);
 				}
 				if ($action_tag === self::AT_JSON_VIEWER) {
@@ -179,13 +182,10 @@ class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
 						continue;
 					}
 					$viewer_fields[$field_name]['viewers'][] = 'markdown';
-					$field_annotation = $metadata['field_annotation'] ?? '';
 					$markdown_params = $this->parseMarkdownViewerParams($tag_info['params'] ?? '');
 					$viewer_fields[$field_name]['markdown'] = array(
-						'readonly' => \Form::disableFieldViaActionTag($field_annotation, $is_survey_page),
 						'initialMode' => $markdown_params['initialMode'],
 						'mdOnly' => $markdown_params['mdOnly'],
-						'rowConfig' => in_array($metadata['custom_alignment'], ['LH', 'LV']) ? 'full' : 'split',
 					);
 				}
 			}

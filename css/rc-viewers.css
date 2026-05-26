@@ -134,13 +134,8 @@ tr[sq_id]:has(td.data) .rc-text-viewer-md-toolbar {
 .rc-text-viewer-md-actions {
 	flex: 0 0 auto;
 	align-items: center;
-	display: none !important;
 	gap: 4px;
 	margin-left: 8px;
-}
-
-.rc-text-viewer-md-toolbar--markdown .rc-text-viewer-md-actions {
-	display: inline-flex !important;
 }
 
 .rc-text-viewer__icon-button {
@@ -155,23 +150,6 @@ tr[sq_id]:has(td.data) .rc-text-viewer-md-toolbar {
 	justify-content: center;
 	padding: 0;
 	width: 24px;
-}
-
-.rc-text-viewer-md-toolbar .rc-text-viewer__icon-button {
-	display: none !important;
-}
-
-.rc-text-viewer-md-toolbar--markdown[data-rc-md-layout="normal"] .rc-text-viewer__icon-button[data-rc-md-action="expand"],
-.rc-text-viewer-md-toolbar--markdown[data-rc-md-layout="normal"] .rc-text-viewer__icon-button[data-rc-md-action="fullscreen"],
-.rc-text-viewer-md-toolbar--markdown[data-rc-md-layout="expanded"] .rc-text-viewer__icon-button[data-rc-md-action="fullscreen"],
-.rc-text-viewer-md-toolbar--markdown[data-rc-md-layout="expanded"] .rc-text-viewer__icon-button[data-rc-md-action="collapse"],
-.rc-text-viewer-md-toolbar--markdown[data-rc-md-layout="fullscreen"] .rc-text-viewer__icon-button[data-rc-md-action="expand"],
-.rc-text-viewer-md-toolbar--markdown[data-rc-md-layout="fullscreen"] .rc-text-viewer__icon-button[data-rc-md-action="collapse"] {
-	display: inline-flex !important;
-}
-
-.rc-text-viewer-md-toolbar .rc-text-viewer__icon-button.rc-text-viewer-md-action--unavailable {
-	display: none !important;
 }
 
 .rc-text-viewer__icon-button:hover,
