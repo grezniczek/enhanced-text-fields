@@ -17,6 +17,8 @@ fields on data entry forms and survey pages.
 - `@MARKDOWN-VIEWER="initial:md"` opens the field in Markdown mode.
 - `@MARKDOWN-VIEWER="initial:raw"` opens the field in Raw mode. This is the
   default when no parameter is provided.
+- `@MARKDOWN-VIEWER="height:200"` sets the initial Markdown viewer height in
+  pixels.
 - `@MARKDOWN-VIEWER="md-only"` opens in Markdown mode and hides the Raw tab.
   This takes precedence over `initial:*` parameters.
 

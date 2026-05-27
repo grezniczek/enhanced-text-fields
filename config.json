@@ -18,7 +18,7 @@
 		},
 		{
 			"tag": "@MARKDOWN-VIEWER",
-			"description": "Render Notes field values as Markdown on data entry forms and survey pages. Optional quoted parameters: initial:md, initial:raw, md-only."
+			"description": "Render Notes field values as Markdown on data entry forms and survey pages. Optional quoted parameters: initial:md, initial:raw, height:200, md-only."
 		},
 		{
 			"tag": "@FILE-TEXT-VIEWER",

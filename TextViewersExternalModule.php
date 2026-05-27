@@ -245,6 +245,7 @@ class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
 		$config = array(
 			'initialMode' => 'raw',
 			'mdOnly' => false,
+			'height' => null,
 		);
 		$value = trim((string)$params);
 		if ($value === '') {
@@ -276,6 +277,12 @@ class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
 				}
 				if ($mode === 'raw') {
 					$config['initialMode'] = 'raw';
+				}
+			}
+			if (strpos($token, 'height:') === 0) {
+				$height = trim(substr($token, strlen('height:')));
+				if (ctype_digit($height) && (int)$height > 0) {
+					$config['height'] = (int)$height;
 				}
 			}
 		}

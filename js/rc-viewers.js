@@ -270,6 +270,9 @@
 		const fieldName = field.name;
 		const markdownConfig = field.markdown || {};
 		const mdOnly = !!markdownConfig.mdOnly;
+		const initialHeight = Number.isInteger(markdownConfig.height) && markdownConfig.height > 0
+			? Math.max(markdownConfig.height, MIN_MARKDOWN_HEIGHT)
+			: null;
 		const $row = $(`tr[sq_id="${escapeSelector(fieldName)}"]`).first();
 		const canExpandToRowWidth = field.rowConfig === 'split';
 		const $expandLink = $('#' + escapeSelector(fieldName) + '-expand');
@@ -329,11 +332,11 @@
 			mdOnly: mdOnly,
 			mode: markdownConfig.initialMode === VIEW_MARKDOWN ? VIEW_MARKDOWN : VIEW_RAW,
 			layout: LAYOUT_NORMAL,
-			normalHeight: $control.outerHeight(),
+			normalHeight: initialHeight || $control.outerHeight(),
 			normalWidth: $control.outerWidth(),
 			expandedHeight: null,
 			fullscreenHeight: null,
-			userHeight: null,
+			userHeight: initialHeight,
 			restoreParent: null,
 			restoreNext: null,
 			$dataCell: null,
