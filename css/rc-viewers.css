@@ -52,14 +52,34 @@
 	border-radius: 0 0 4px 4px;
 	box-sizing: border-box;
 	display: none;
+	flex-direction: column;
 	margin-bottom: 8px;
 	max-width: 100%;
 	min-width: 0;
 	overflow: hidden;
+	padding: 0;
+	position: relative;
+	resize: none;
 }
 
-.rc-text-viewer-json-toolbar.rc-text-viewer--invalid .rc-text-viewer__status {
-	color: #b00020;
+.rc-text-viewer-json-preview .rc-text-viewer__ace {
+	flex: 1 1 auto;
+	height: auto;
+	min-height: 0;
+}
+
+.rc-text-viewer-json-status {
+	display: inline-flex;
+	align-items: center;
+	min-width: 14px;
+}
+
+.rc-text-viewer-json-status__valid {
+	color: #6b7280;
+}
+
+.rc-text-viewer-json-status__invalid {
+	color: #b45309;
 }
 
 .rc-text-viewer__fallback {
@@ -261,7 +281,8 @@ tr[sq_id]:has(td.data) .rc-text-viewer-md-toolbar {
 	z-index: 100000;
 }
 
-.rc-text-viewer-md-preview--fullscreen .rc-text-viewer-md-resize-handle {
+.rc-text-viewer-md-preview--fullscreen .rc-text-viewer-md-resize-handle,
+.rc-text-viewer-json-preview.rc-text-viewer-md-preview--fullscreen .rc-text-viewer-md-resize-handle {
 	display: none;
 }
 

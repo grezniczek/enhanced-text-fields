@@ -958,7 +958,8 @@
 		const fieldName = field.name;
 		const jsonConfig = field.json || {};
 		const jsonOnly = !!jsonConfig.jsonOnly;
-		const format = $control.is('textarea') && jsonConfig.format !== 'compact' ? 'pretty' : 'compact';
+		const storageFormat = $control.is('textarea') && jsonConfig.format !== 'compact' ? 'pretty' : 'compact';
+		const displayFormat = 'pretty';
 		const initialHeight = Number.isInteger(jsonConfig.height) && jsonConfig.height > 0
 			? Math.max(jsonConfig.height, MIN_MARKDOWN_HEIGHT)
 			: null;
@@ -982,27 +983,60 @@
 			'data-rc-json-mode': VIEW_JSON,
 			text: 'JSON',
 		});
-		const $status = $('<span/>', { class: 'rc-text-viewer__status', 'aria-live': 'polite' });
+		const $status = $('<span/>', {
+			class: 'rc-text-viewer-json-status',
+			'aria-live': 'polite',
+		});
+		const $actions = $('<span/>', { class: 'rc-text-viewer-md-actions' });
+		const $expandButton = createIconButton('expand', 'fa-solid fa-arrows-left-right', 'Expand to row width');
+		const $fullscreenButton = createIconButton('fullscreen', 'fa-solid fa-maximize', 'Fullscreen');
+		const $collapseButton = createIconButton('collapse', 'fa-solid fa-down-left-and-up-right-to-center', 'Collapse');
+		if (field.rowConfig !== 'split') {
+			$expandButton.addClass('rc-text-viewer-md-action--unavailable');
+		}
 		const $viewer = $('<div/>', {
 			class: 'rc-text-viewer-json-preview',
 			'data-rc-text-viewer-field': fieldName,
 		});
 		const $editor = $('<div/>', { id: editorId, class: 'rc-text-viewer__ace' });
+		const $resizeHandle = $('<div/>', {
+			class: 'rc-text-viewer-md-resize-handle',
+			role: 'separator',
+			'aria-orientation': 'horizontal',
+			title: 'Drag to resize',
+		});
 		const controller = {
 			fieldName: fieldName,
 			$control: $control,
+			$row: $(`tr[sq_id="${escapeSelector(fieldName)}"]`).first(),
 			$expandLink: $expandLink,
 			$toolbar: $toolbar,
 			$viewer: $viewer,
 			$editor: $editor,
+			$resizeHandle: $resizeHandle,
 			$status: $status,
+			$actions: $actions,
+			$expandButton: $expandButton,
+			$fullscreenButton: $fullscreenButton,
+			$collapseButton: $collapseButton,
 			editor: null,
 			jsonOnly: jsonOnly,
-			format: format,
+			displayFormat: displayFormat,
+			storageFormat: storageFormat,
 			rowConfig: field.rowConfig === 'full' ? 'full' : 'split',
+			canExpandToRowWidth: field.rowConfig === 'split',
 			mode: jsonConfig.initialMode === VIEW_JSON ? VIEW_JSON : VIEW_RAW,
+			layout: LAYOUT_NORMAL,
 			height: initialHeight || $control.outerHeight() || MIN_MARKDOWN_HEIGHT,
 			width: $control.outerWidth(),
+			expandedHeight: null,
+			fullscreenHeight: null,
+			userHeight: initialHeight,
+			restoreParent: null,
+			restoreNext: null,
+			$dataCell: null,
+			$expandedRow: null,
+			bodyOverflow: null,
 			updatingEditor: false,
 			updatingControl: false,
 			skipNextControlRender: false,
@@ -1014,19 +1048,24 @@
 
 		if (jsonOnly) {
 			controller.mode = VIEW_JSON;
-			$tabs.append($jsonTab);
+			$tabs.append($jsonTab, $status);
 		}
 		else {
-			$tabs.append($rawTab, $('<span/>', { class: 'rc-text-viewer-md-tab-separator', text: '|' }), $jsonTab);
+			$tabs.append($rawTab, $('<span/>', { class: 'rc-text-viewer-md-tab-separator', text: '|' }), $jsonTab, $status);
 		}
-		$toolbar.append($tabs, $status);
-		$viewer.append($editor);
+		$actions.append($expandButton, $fullscreenButton, $collapseButton);
+		$toolbar.append($tabs, $actions);
+		$viewer.append($editor, $resizeHandle);
 		$control.before($toolbar);
 		$control.after($viewer);
 
 		$toolbar.on('click', '[data-rc-json-mode]', function (ev) {
 			ev.preventDefault();
 			setJsonMode(controller, $(this).attr('data-rc-json-mode'));
+		});
+		$toolbar.on('click', '[data-rc-md-action]', function (ev) {
+			ev.preventDefault();
+			handleJsonAction(controller, $(this).attr('data-rc-md-action'));
 		});
 		$control.on('input change keyup', debounce(function () {
 			if (controller.skipNextControlRender) {
@@ -1045,7 +1084,6 @@
 			controller.editor = editor;
 			state.editors[fieldName] = editor;
 			editor.setTheme('ace/theme/textmate');
-			editor.session.setMode('ace/mode/json');
 			editor.setReadOnly(!!field.readonly);
 			editor.setShowPrintMargin(false);
 			editor.setHighlightActiveLine(false);
@@ -1055,16 +1093,20 @@
 			editor.session.on('change', debounce(function () {
 				syncJsonFromEditor(controller);
 			}, 100));
+			editor.on('blur', function () {
+				normalizeJsonEditor(controller);
+			});
 			renderJsonFromControl(controller);
 			syncJsonSize(controller);
 			editor.resize();
 		}).catch(function (e) {
-			const formatted = formatJson($control.val() || '', controller.format);
+			const formatted = formatJson($control.val() || '', controller.displayFormat);
 			$viewer.html($('<pre/>', { class: 'rc-text-viewer__fallback' }).text(formatted.text));
 			setJsonStatus(controller, formatted);
 			LOGGER.warn('Ace failed to load', e);
 		});
 
+		initJsonResizeHandle(controller);
 		setJsonMode(controller, controller.mode);
 		return controller;
 	}
@@ -1086,20 +1128,41 @@
 
 		controller.mode = mode;
 		if (mode === VIEW_RAW) {
+			normalizeJsonEditor(controller);
+			restoreJsonLayout(controller);
 			controller.$control.show();
 			controller.$expandLink.show();
-			controller.$viewer.hide();
+			controller.$viewer.css('display', 'none');
 		}
 		else {
 			syncJsonSize(controller);
 			controller.$control.hide();
 			controller.$expandLink.hide();
-			controller.$viewer.show();
+			controller.$viewer.css('display', 'flex');
 			if (controller.editor) {
 				controller.editor.resize();
 			}
 		}
 		updateJsonToolbar(controller);
+	}
+
+	/**
+	 * Handles JSON action buttons.
+	 *
+	 * @param {object} controller JSON controller.
+	 * @param {string} action Action identifier.
+	 * @returns {void}
+	 */
+	function handleJsonAction(controller, action) {
+		if (action === 'expand') {
+			expandJson(controller);
+		}
+		if (action === 'fullscreen') {
+			fullscreenJson(controller);
+		}
+		if (action === 'collapse') {
+			collapseJson(controller);
+		}
 	}
 
 	/**
@@ -1109,12 +1172,20 @@
 	 * @returns {void}
 	 */
 	function updateJsonToolbar(controller) {
+		const isJson = controller.mode === VIEW_JSON;
 		controller.$toolbar.find('[data-rc-json-mode]').each(function () {
 			const $tab = $(this);
 			const active = $tab.attr('data-rc-json-mode') === controller.mode;
 			$tab.toggleClass('active', active);
 			$tab.attr('aria-current', active ? 'true' : 'false');
 		});
+		controller.$actions[isJson ? 'show' : 'hide']();
+		controller.$expandButton[isJson && controller.canExpandToRowWidth && controller.layout !== LAYOUT_EXPANDED ? 'show' : 'hide']();
+		controller.$fullscreenButton[isJson && controller.layout !== LAYOUT_FULLSCREEN ? 'show' : 'hide']();
+		controller.$collapseButton[isJson && (controller.layout === LAYOUT_FULLSCREEN || controller.layout === LAYOUT_EXPANDED) ? 'show' : 'hide']();
+		controller.$toolbar
+			.attr('data-rc-json-layout', controller.layout)
+			.toggleClass('rc-text-viewer-md-toolbar--markdown', isJson);
 	}
 
 	/**
@@ -1124,6 +1195,9 @@
 	 * @returns {void}
 	 */
 	function syncJsonSize(controller) {
+		if (controller.layout !== LAYOUT_NORMAL) {
+			return;
+		}
 		const measuredWidth = controller.$control.is(':visible') ? controller.$control.outerWidth() : 0;
 		const width = measuredWidth || controller.width || controller.$control.parent().width() || 200;
 		const cssWidth = controller.$control.is('textarea') && controller.rowConfig === 'full' ? '100%' : width + 'px';
@@ -1133,12 +1207,222 @@
 		controller.$toolbar.css('width', cssWidth);
 		controller.$viewer.css({
 			width: cssWidth,
+			height: Math.max(controller.height, MIN_MARKDOWN_HEIGHT) + 'px',
+			'min-height': MIN_MARKDOWN_HEIGHT + 'px',
 			'margin-left': '',
 		});
 		controller.$editor.css({
-			height: Math.max(controller.height, MIN_MARKDOWN_HEIGHT) + 'px',
+			'min-height': '',
+		});
+		if (controller.editor) {
+			controller.editor.resize();
+		}
+	}
+
+	/**
+	 * Updates Ace height for the active JSON layout.
+	 *
+	 * @param {object} controller JSON controller.
+	 * @param {number} height Viewer height in pixels.
+	 * @returns {void}
+	 */
+	function setJsonViewerHeight(controller, height, userResize) {
+		height = Math.max(MIN_MARKDOWN_HEIGHT, Math.floor(height));
+		controller.$viewer.css({
+			height: height + 'px',
 			'min-height': MIN_MARKDOWN_HEIGHT + 'px',
 		});
+		controller.$editor.css({
+			'min-height': '',
+		});
+		if (controller.layout === LAYOUT_NORMAL) {
+			controller.height = height;
+			controller.expandedHeight = height;
+			if (userResize) {
+				controller.userHeight = height;
+			}
+		}
+		if (controller.layout === LAYOUT_EXPANDED) {
+			controller.expandedHeight = height;
+			if (userResize) {
+				controller.height = height;
+				controller.userHeight = height;
+			}
+		}
+		if (controller.layout === LAYOUT_FULLSCREEN) {
+			controller.fullscreenHeight = height;
+		}
+		if (controller.editor) {
+			controller.editor.resize();
+		}
+	}
+
+	/**
+	 * Stores current JSON viewer height for the active layout.
+	 *
+	 * @param {object} controller JSON controller.
+	 * @returns {void}
+	 */
+	function rememberJsonHeight(controller) {
+		const height = controller.$viewer.outerHeight();
+		if (!height) {
+			return;
+		}
+		if (controller.layout === LAYOUT_NORMAL) {
+			controller.height = height;
+		}
+		if (controller.layout === LAYOUT_EXPANDED) {
+			controller.expandedHeight = height;
+		}
+		if (controller.layout === LAYOUT_FULLSCREEN) {
+			controller.fullscreenHeight = height;
+		}
+	}
+
+	/**
+	 * Initializes the full-width JSON resize handle.
+	 *
+	 * @param {object} controller JSON controller.
+	 * @returns {void}
+	 */
+	function initJsonResizeHandle(controller) {
+		controller.$resizeHandle.on('mousedown', function (ev) {
+			if (controller.layout === LAYOUT_FULLSCREEN) {
+				return;
+			}
+			ev.preventDefault();
+			const startY = ev.pageY;
+			const startHeight = controller.$viewer.outerHeight();
+
+			$(document).on('mousemove.rcTextViewerJsonResize', function (moveEv) {
+				const nextHeight = Math.max(MIN_MARKDOWN_HEIGHT, startHeight + (moveEv.pageY - startY));
+				setJsonViewerHeight(controller, nextHeight, true);
+			});
+			$(document).on('mouseup.rcTextViewerJsonResize', function () {
+				$(document).off('.rcTextViewerJsonResize');
+			});
+		});
+	}
+
+	/**
+	 * Expands the JSON editor to the full REDCap field row width.
+	 *
+	 * @param {object} controller JSON controller.
+	 * @returns {void}
+	 */
+	function expandJson(controller) {
+		if (!controller.canExpandToRowWidth) {
+			return;
+		}
+		if (controller.mode !== VIEW_JSON) {
+			setJsonMode(controller, VIEW_JSON);
+		}
+		if (controller.layout !== LAYOUT_NORMAL) {
+			rememberJsonHeight(controller);
+			restoreJsonLayout(controller);
+		}
+
+		const $target = getMarkdownExpandTarget(controller);
+		const $expandedCell = createExpandedRow(controller);
+		const rowWidth = Math.max((controller.$row.length ? controller.$row.outerWidth() : $target.outerWidth()), controller.$viewer.outerWidth());
+		const currentHeight = controller.$viewer.outerHeight() || controller.height;
+		const expandedHeight = controller.userHeight || controller.expandedHeight || Math.max(currentHeight, Math.floor(rowWidth / 2));
+		captureMarkdownPlacement(controller);
+		$expandedCell.append(controller.$toolbar);
+		$expandedCell.append(controller.$viewer);
+		hideDataCellContents(controller, $target);
+		controller.$toolbar.css({
+			width: '100%',
+			'margin-left': '',
+		});
+		controller.$viewer.css({
+			width: '100%',
+			'margin-left': '',
+		});
+		controller.layout = LAYOUT_EXPANDED;
+		controller.$toolbar.addClass('rc-text-viewer-md-toolbar--expanded');
+		controller.$viewer.addClass('rc-text-viewer-md-preview--expanded');
+		setJsonViewerHeight(controller, expandedHeight, false);
+		updateJsonToolbar(controller);
+	}
+
+	/**
+	 * Opens the JSON editor in a fullscreen overlay.
+	 *
+	 * @param {object} controller JSON controller.
+	 * @returns {void}
+	 */
+	function fullscreenJson(controller) {
+		if (controller.mode !== VIEW_JSON) {
+			setJsonMode(controller, VIEW_JSON);
+		}
+		if (controller.layout !== LAYOUT_FULLSCREEN) {
+			rememberJsonHeight(controller);
+			captureMarkdownPlacement(controller);
+		}
+		controller.bodyOverflow = $('body').css('overflow');
+		$('body').css('overflow', 'hidden');
+		$('body').append(controller.$toolbar);
+		$('body').append(controller.$viewer);
+		const fullscreenHeight = controller.fullscreenHeight || Math.max(controller.$viewer.outerHeight() || controller.height, $(global).height() - 64);
+		controller.$toolbar.css({
+			width: '',
+			'margin-left': '',
+		});
+		controller.$viewer.css({
+			width: '',
+			'margin-left': '',
+		});
+		controller.layout = LAYOUT_FULLSCREEN;
+		controller.$toolbar.removeClass('rc-text-viewer-md-toolbar--expanded');
+		controller.$toolbar.addClass('rc-text-viewer-md-toolbar--fullscreen');
+		controller.$viewer.removeClass('rc-text-viewer-md-preview--expanded');
+		controller.$viewer.addClass('rc-text-viewer-md-preview--fullscreen');
+		setJsonViewerHeight(controller, fullscreenHeight, false);
+		updateJsonToolbar(controller);
+	}
+
+	/**
+	 * Collapses an expanded/fullscreen JSON editor.
+	 *
+	 * @param {object} controller JSON controller.
+	 * @returns {void}
+	 */
+	function collapseJson(controller) {
+		if (controller.layout === LAYOUT_NORMAL) {
+			updateJsonToolbar(controller);
+			return;
+		}
+		rememberJsonHeight(controller);
+		restoreJsonLayout(controller);
+		syncJsonSize(controller);
+		controller.$viewer.css('display', 'flex');
+		if (controller.editor) {
+			controller.editor.resize();
+		}
+		updateJsonToolbar(controller);
+	}
+
+	/**
+	 * Restores moved JSON toolbar and editor from expanded/fullscreen layouts.
+	 *
+	 * @param {object} controller JSON controller.
+	 * @returns {void}
+	 */
+	function restoreJsonLayout(controller) {
+		restoreMarkdownPlacement(controller);
+		restoreDataCellContents(controller);
+		if (controller.$expandedRow && controller.$expandedRow.length) {
+			controller.$expandedRow.remove();
+			controller.$expandedRow = null;
+		}
+		controller.layout = LAYOUT_NORMAL;
+		controller.$toolbar.removeClass('rc-text-viewer-md-toolbar--expanded rc-text-viewer-md-toolbar--fullscreen');
+		controller.$viewer.removeClass('rc-text-viewer-md-preview--expanded rc-text-viewer-md-preview--fullscreen');
+		if (controller.bodyOverflow !== null) {
+			$('body').css('overflow', controller.bodyOverflow);
+			controller.bodyOverflow = null;
+		}
 	}
 
 	/**
@@ -1148,7 +1432,7 @@
 	 * @returns {void}
 	 */
 	function renderJsonFromControl(controller) {
-		const formatted = formatJson(controller.$control.val() || '', controller.format);
+		const formatted = formatJson(controller.$control.val() || '', controller.displayFormat);
 		setJsonStatus(controller, formatted);
 		if (!controller.editor) {
 			return;
@@ -1170,15 +1454,38 @@
 			return;
 		}
 		const raw = controller.editor.getValue();
-		const formatted = formatJson(raw, controller.format);
-		setJsonStatus(controller, formatted);
-		if (!formatted.ok || controller.editor.getReadOnly()) {
+		const displayFormatted = formatJson(raw, controller.displayFormat);
+		setJsonStatus(controller, displayFormatted);
+		if (!displayFormatted.ok || controller.editor.getReadOnly()) {
 			return;
 		}
+		const storageFormatted = formatJson(raw, controller.storageFormat);
 		controller.skipNextControlRender = true;
 		controller.updatingControl = true;
-		controller.$control.val(formatted.text).trigger('change');
+		controller.$control.val(storageFormatted.text).trigger('change');
 		controller.updatingControl = false;
+	}
+
+	/**
+	 * Pretty-normalizes valid JSON editor content without changing storage policy.
+	 *
+	 * @param {object} controller JSON controller.
+	 * @returns {void}
+	 */
+	function normalizeJsonEditor(controller) {
+		if (!controller.editor || controller.updatingEditor) {
+			return;
+		}
+		const formatted = formatJson(controller.editor.getValue(), controller.displayFormat);
+		setJsonStatus(controller, formatted);
+		if (!formatted.ok) {
+			return;
+		}
+		controller.updatingEditor = true;
+		controller.editor.setValue(formatted.text, -1);
+		controller.updatingEditor = false;
+		syncJsonFromEditor(controller);
+		controller.editor.resize();
 	}
 
 	/**
@@ -1192,13 +1499,22 @@
 		controller.$viewer.toggleClass('rc-text-viewer--invalid', !formatted.ok);
 		controller.$toolbar.toggleClass('rc-text-viewer--invalid', !formatted.ok);
 		if (formatted.empty) {
-			controller.$status.text('empty');
+			controller.$status
+				.attr('title', 'JSON is empty')
+				.attr('aria-label', 'JSON is empty')
+				.html('');
 		}
 		else if (formatted.ok) {
-			controller.$status.text('valid');
+			controller.$status
+				.attr('title', 'Valid JSON')
+				.attr('aria-label', 'Valid JSON')
+				.html($('<i/>', { class: 'fa-solid fa-check text-muted rc-text-viewer-json-status__valid', 'aria-hidden': 'true' }));
 		}
 		else {
-			controller.$status.text('invalid JSON: ' + formatted.error);
+			controller.$status
+				.attr('title', 'Invalid JSON: ' + formatted.error)
+				.attr('aria-label', 'Invalid JSON: ' + formatted.error)
+				.html($('<i/>', { class: 'fa-solid fa-triangle-exclamation text-warning rc-text-viewer-json-status__invalid', 'aria-hidden': 'true' }));
 		}
 	}
 
