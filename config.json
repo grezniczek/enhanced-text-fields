@@ -14,7 +14,7 @@
 	"action-tags": [
 		{
 			"tag": "@JSON-VIEWER",
-			"description": "Render the field value as formatted JSON below the field on data entry forms and survey pages."
+			"description": "Render text and Notes field values as editable JSON in Ace on data entry forms and survey pages. Optional quoted parameters: initial:json, initial:raw, height:200, format:pretty, format:compact, json-only."
 		},
 		{
 			"tag": "@MARKDOWN-VIEWER",

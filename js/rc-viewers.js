@@ -6,6 +6,7 @@
 	const EM_NAME = 'Text Viewers';
 	const VIEW_RAW = 'raw';
 	const VIEW_MARKDOWN = 'markdown';
+	const VIEW_JSON = 'json';
 	const LAYOUT_NORMAL = 'normal';
 	const LAYOUT_EXPANDED = 'expanded';
 	const LAYOUT_FULLSCREEN = 'fullscreen';
@@ -24,6 +25,7 @@
 		acePromise: null,
 		editors: {},
 		markdownControllers: {},
+		jsonControllers: {},
 	};
 
 	/**
@@ -917,16 +919,17 @@
 	 * Returns formatted JSON text and validation state.
 	 *
 	 * @param {string} raw Raw field value.
+	 * @param {string} format Storage/display format.
 	 * @returns {object}
 	 */
-	function formatJson(raw) {
+	function formatJson(raw, format) {
 		const text = String(raw || '').trim();
 		if (text === '') {
 			return { ok: true, empty: true, text: '' };
 		}
 		try {
 			const parsed = JSON.parse(text);
-			return { ok: true, empty: false, text: JSON.stringify(parsed, null, 2) };
+			return { ok: true, empty: false, text: stringifyJson(parsed, format) };
 		}
 		catch (e) {
 			return { ok: false, empty: false, text: raw, error: e.message || String(e) };
@@ -934,58 +937,280 @@
 	}
 
 	/**
-	 * Renders a JSON viewer and wires it to field changes.
+	 * Serializes parsed JSON using the requested format.
+	 *
+	 * @param {any} parsed Parsed JSON value.
+	 * @param {string} format Storage/display format.
+	 * @returns {string}
+	 */
+	function stringifyJson(parsed, format) {
+		return JSON.stringify(parsed, null, format === 'compact' ? 0 : 2);
+	}
+
+	/**
+	 * Builds a JSON controller for one text field.
 	 *
 	 * @param {jQuery} $control Field input or textarea.
-	 * @param {string} fieldName REDCap field name.
-	 * @returns {void}
+	 * @param {object} field Field configuration.
+	 * @returns {object}
 	 */
-	function attachJsonViewer($control, fieldName) {
-		const $shell = createViewerShell($control, fieldName, 'json');
-		const $body = $shell.find('.rc-text-viewer__body');
-		const $status = $shell.find('.rc-text-viewer__status');
+	function createJsonController($control, field) {
+		const fieldName = field.name;
+		const jsonConfig = field.json || {};
+		const jsonOnly = !!jsonConfig.jsonOnly;
+		const format = $control.is('textarea') && jsonConfig.format !== 'compact' ? 'pretty' : 'compact';
+		const initialHeight = Number.isInteger(jsonConfig.height) && jsonConfig.height > 0
+			? Math.max(jsonConfig.height, MIN_MARKDOWN_HEIGHT)
+			: null;
+		const $expandLink = $('#' + escapeSelector(fieldName) + '-expand');
 		const editorId = `rc-text-viewer-ace-${fieldName}`;
+		const rawLabel = field.readonly ? 'Raw' : 'Raw (Edit)';
+		const $toolbar = $('<div/>', {
+			class: 'rc-text-viewer-md-toolbar rc-text-viewer-json-toolbar d-print-none',
+			'data-rc-text-viewer-field': fieldName,
+		});
+		const $tabs = $('<span/>', { class: 'rc-text-viewer-md-tabs' });
+		const $rawTab = $('<a/>', {
+			href: 'javascript:;',
+			class: 'rc-text-viewer-md-tab',
+			'data-rc-json-mode': VIEW_RAW,
+			text: rawLabel,
+		});
+		const $jsonTab = $('<a/>', {
+			href: 'javascript:;',
+			class: 'rc-text-viewer-md-tab',
+			'data-rc-json-mode': VIEW_JSON,
+			text: 'JSON',
+		});
+		const $status = $('<span/>', { class: 'rc-text-viewer__status', 'aria-live': 'polite' });
+		const $viewer = $('<div/>', {
+			class: 'rc-text-viewer-json-preview',
+			'data-rc-text-viewer-field': fieldName,
+		});
 		const $editor = $('<div/>', { id: editorId, class: 'rc-text-viewer__ace' });
+		const controller = {
+			fieldName: fieldName,
+			$control: $control,
+			$expandLink: $expandLink,
+			$toolbar: $toolbar,
+			$viewer: $viewer,
+			$editor: $editor,
+			$status: $status,
+			editor: null,
+			jsonOnly: jsonOnly,
+			format: format,
+			rowConfig: field.rowConfig === 'full' ? 'full' : 'split',
+			mode: jsonConfig.initialMode === VIEW_JSON ? VIEW_JSON : VIEW_RAW,
+			height: initialHeight || $control.outerHeight() || MIN_MARKDOWN_HEIGHT,
+			width: $control.outerWidth(),
+			updatingEditor: false,
+			updatingControl: false,
+			skipNextControlRender: false,
+		};
 
-		$body.empty().append($editor);
+		if (field.readonly) {
+			applyMarkdownReadonly($control, $control.closest('tr'));
+		}
+
+		if (jsonOnly) {
+			controller.mode = VIEW_JSON;
+			$tabs.append($jsonTab);
+		}
+		else {
+			$tabs.append($rawTab, $('<span/>', { class: 'rc-text-viewer-md-tab-separator', text: '|' }), $jsonTab);
+		}
+		$toolbar.append($tabs, $status);
+		$viewer.append($editor);
+		$control.before($toolbar);
+		$control.after($viewer);
+
+		$toolbar.on('click', '[data-rc-json-mode]', function (ev) {
+			ev.preventDefault();
+			setJsonMode(controller, $(this).attr('data-rc-json-mode'));
+		});
+		$control.on('input change keyup', debounce(function () {
+			if (controller.skipNextControlRender) {
+				controller.skipNextControlRender = false;
+				return;
+			}
+			if (!controller.updatingControl) {
+				renderJsonFromControl(controller);
+			}
+		}, 100));
 
 		ensureScript(state.config.urls.ace, function () {
 			return !!global.ace;
 		}).then(function () {
 			const editor = global.ace.edit(editorId);
+			controller.editor = editor;
 			state.editors[fieldName] = editor;
 			editor.setTheme('ace/theme/textmate');
-			editor.setReadOnly(true);
+			editor.session.setMode('ace/mode/json');
+			editor.setReadOnly(!!field.readonly);
 			editor.setShowPrintMargin(false);
 			editor.setHighlightActiveLine(false);
 			editor.session.setUseWorker(false);
 			editor.renderer.setShowGutter(true);
 			editor.renderer.setScrollMargin(6, 6, 0, 0);
-
-			const render = debounce(function () {
-				const formatted = formatJson($control.val() || '');
-				editor.setValue(formatted.text, -1);
-				$shell.toggleClass('rc-text-viewer--invalid', !formatted.ok);
-				if (formatted.empty) {
-					$status.text('empty');
-				}
-				else if (formatted.ok) {
-					$status.text('valid');
-				}
-				else {
-					$status.text('invalid JSON: ' + formatted.error);
-				}
-				editor.resize();
-			}, 100);
-
-			$control.on('input change keyup', render);
-			render();
+			editor.session.on('change', debounce(function () {
+				syncJsonFromEditor(controller);
+			}, 100));
+			renderJsonFromControl(controller);
+			syncJsonSize(controller);
+			editor.resize();
 		}).catch(function (e) {
-			const formatted = formatJson($control.val() || '');
-			$body.html($('<pre/>', { class: 'rc-text-viewer__fallback' }).text(formatted.text));
-			$status.text('Ace unavailable');
+			const formatted = formatJson($control.val() || '', controller.format);
+			$viewer.html($('<pre/>', { class: 'rc-text-viewer__fallback' }).text(formatted.text));
+			setJsonStatus(controller, formatted);
 			LOGGER.warn('Ace failed to load', e);
 		});
+
+		setJsonMode(controller, controller.mode);
+		return controller;
+	}
+
+	/**
+	 * Sets the visible JSON field mode.
+	 *
+	 * @param {object} controller JSON controller.
+	 * @param {string} mode Desired mode.
+	 * @returns {void}
+	 */
+	function setJsonMode(controller, mode) {
+		if (controller.jsonOnly || mode === VIEW_JSON) {
+			mode = VIEW_JSON;
+		}
+		else {
+			mode = VIEW_RAW;
+		}
+
+		controller.mode = mode;
+		if (mode === VIEW_RAW) {
+			controller.$control.show();
+			controller.$expandLink.show();
+			controller.$viewer.hide();
+		}
+		else {
+			syncJsonSize(controller);
+			controller.$control.hide();
+			controller.$expandLink.hide();
+			controller.$viewer.show();
+			if (controller.editor) {
+				controller.editor.resize();
+			}
+		}
+		updateJsonToolbar(controller);
+	}
+
+	/**
+	 * Updates JSON toolbar active state.
+	 *
+	 * @param {object} controller JSON controller.
+	 * @returns {void}
+	 */
+	function updateJsonToolbar(controller) {
+		controller.$toolbar.find('[data-rc-json-mode]').each(function () {
+			const $tab = $(this);
+			const active = $tab.attr('data-rc-json-mode') === controller.mode;
+			$tab.toggleClass('active', active);
+			$tab.attr('aria-current', active ? 'true' : 'false');
+		});
+	}
+
+	/**
+	 * Mirrors the raw control footprint for normal JSON mode.
+	 *
+	 * @param {object} controller JSON controller.
+	 * @returns {void}
+	 */
+	function syncJsonSize(controller) {
+		const measuredWidth = controller.$control.is(':visible') ? controller.$control.outerWidth() : 0;
+		const width = measuredWidth || controller.width || controller.$control.parent().width() || 200;
+		const cssWidth = controller.$control.is('textarea') && controller.rowConfig === 'full' ? '100%' : width + 'px';
+		if (measuredWidth) {
+			controller.width = measuredWidth;
+		}
+		controller.$toolbar.css('width', cssWidth);
+		controller.$viewer.css({
+			width: cssWidth,
+			'margin-left': '',
+		});
+		controller.$editor.css({
+			height: Math.max(controller.height, MIN_MARKDOWN_HEIGHT) + 'px',
+			'min-height': MIN_MARKDOWN_HEIGHT + 'px',
+		});
+	}
+
+	/**
+	 * Renders the raw field value into Ace.
+	 *
+	 * @param {object} controller JSON controller.
+	 * @returns {void}
+	 */
+	function renderJsonFromControl(controller) {
+		const formatted = formatJson(controller.$control.val() || '', controller.format);
+		setJsonStatus(controller, formatted);
+		if (!controller.editor) {
+			return;
+		}
+		controller.updatingEditor = true;
+		controller.editor.setValue(formatted.text, -1);
+		controller.updatingEditor = false;
+		controller.editor.resize();
+	}
+
+	/**
+	 * Syncs valid Ace JSON back into the raw REDCap field.
+	 *
+	 * @param {object} controller JSON controller.
+	 * @returns {void}
+	 */
+	function syncJsonFromEditor(controller) {
+		if (!controller.editor || controller.updatingEditor) {
+			return;
+		}
+		const raw = controller.editor.getValue();
+		const formatted = formatJson(raw, controller.format);
+		setJsonStatus(controller, formatted);
+		if (!formatted.ok || controller.editor.getReadOnly()) {
+			return;
+		}
+		controller.skipNextControlRender = true;
+		controller.updatingControl = true;
+		controller.$control.val(formatted.text).trigger('change');
+		controller.updatingControl = false;
+	}
+
+	/**
+	 * Updates JSON validation status.
+	 *
+	 * @param {object} controller JSON controller.
+	 * @param {object} formatted JSON format result.
+	 * @returns {void}
+	 */
+	function setJsonStatus(controller, formatted) {
+		controller.$viewer.toggleClass('rc-text-viewer--invalid', !formatted.ok);
+		controller.$toolbar.toggleClass('rc-text-viewer--invalid', !formatted.ok);
+		if (formatted.empty) {
+			controller.$status.text('empty');
+		}
+		else if (formatted.ok) {
+			controller.$status.text('valid');
+		}
+		else {
+			controller.$status.text('invalid JSON: ' + formatted.error);
+		}
+	}
+
+	/**
+	 * Renders a JSON viewer and wires it to field changes.
+	 *
+	 * @param {jQuery} $control Field input or textarea.
+	 * @param {object} field Field configuration.
+	 * @returns {void}
+	 */
+	function attachJsonViewer($control, field) {
+		state.jsonControllers[field.name] = createJsonController($control, field);
 	}
 
 	/**
@@ -1011,7 +1236,7 @@
 					attachMarkdownViewer($control, field);
 				}
 				if (viewerType === 'json') {
-					attachJsonViewer($control, field.name);
+					attachJsonViewer($control, field);
 				}
 			});
 		});
@@ -1041,6 +1266,7 @@
 			refresh: attachConfiguredViewers,
 			editors: state.editors,
 			markdownControllers: state.markdownControllers,
+			jsonControllers: state.jsonControllers,
 		};
 	}
 

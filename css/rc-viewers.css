@@ -46,6 +46,22 @@
 	width: 100%;
 }
 
+.rc-text-viewer-json-preview {
+	background: #fff;
+	border: 1px solid #d4d8dd;
+	border-radius: 0 0 4px 4px;
+	box-sizing: border-box;
+	display: none;
+	margin-bottom: 8px;
+	max-width: 100%;
+	min-width: 0;
+	overflow: hidden;
+}
+
+.rc-text-viewer-json-toolbar.rc-text-viewer--invalid .rc-text-viewer__status {
+	color: #b00020;
+}
+
 .rc-text-viewer__fallback {
 	background: #fbfbfc;
 	color: #24292f;

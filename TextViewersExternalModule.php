@@ -218,16 +218,22 @@ class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
 		}
 		foreach ($actionTags[self::AT_JSON_VIEWER] ?? [] as $fieldName => $tagInfo) {
 			$fieldMetadata = $metadata[$fieldName] ?? null;
-			if (empty($fieldMetadata)) continue;
+			if (empty($fieldMetadata) || !in_array($fieldMetadata['element_type'] ?? '', ['text', 'textarea'], true)) continue;
+			$jsonParams = $this->parseJsonViewerParams($tagInfo['params'] ?? '');
+			if (($fieldMetadata['element_type'] ?? '') === 'text') {
+				$jsonParams['format'] = 'compact';
+			}
 			if (!isset($viewerFields[$fieldName])) {
 				$viewerFields[$fieldName] = [
 					'name' => $fieldName,
 					'viewers' => ['json'],
 					'readonly' => $is_readonly($fieldName),
 					'rowConfig' => in_array($fieldMetadata['custom_alignment'] ?? '', ['LH', 'LV']) ? 'full' : 'split',
+					'json' => $jsonParams,
 				];
 			} else {
 				$viewerFields[$fieldName]['viewers'][] = 'json';
+				$viewerFields[$fieldName]['json'] = $jsonParams;
 			}
 		}
 
@@ -289,6 +295,72 @@ class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
 
 		if ($config['mdOnly']) {
 			$config['initialMode'] = 'markdown';
+		}
+		return $config;
+	}
+
+	/**
+	 * Parses @JSON-VIEWER parameters.
+	 *
+	 * @param mixed $params Raw action-tag parameter value.
+	 * @return array
+	 */
+	private function parseJsonViewerParams($params)
+	{
+		$config = array(
+			'initialMode' => 'raw',
+			'jsonOnly' => false,
+			'height' => null,
+			'format' => 'pretty',
+		);
+		$value = trim((string)$params);
+		if ($value === '') {
+			return $config;
+		}
+
+		$decoded = json_decode($value, true);
+		if (is_string($decoded)) {
+			$value = $decoded;
+		}
+		else {
+			$value = trim($value, "\"'");
+		}
+
+		$tokens = array_map('trim', explode(',', strtolower($value)));
+		foreach ($tokens as $token) {
+			if ($token === '') {
+				continue;
+			}
+			if ($token === 'json-only') {
+				$config['jsonOnly'] = true;
+				$config['initialMode'] = 'json';
+				continue;
+			}
+			if (strpos($token, 'initial:') === 0) {
+				$mode = trim(substr($token, strlen('initial:')));
+				if ($mode === 'json') {
+					$config['initialMode'] = 'json';
+				}
+				if ($mode === 'raw') {
+					$config['initialMode'] = 'raw';
+				}
+			}
+			if (strpos($token, 'height:') === 0) {
+				$height = trim(substr($token, strlen('height:')));
+				if (ctype_digit($height) && (int)$height > 0) {
+					$config['height'] = (int)$height;
+				}
+			}
+			if (strpos($token, 'format:') === 0) {
+				$format = trim(substr($token, strlen('format:')));
+				if (in_array($format, ['pretty', 'compact'], true)) {
+					$config['format'] = $format;
+				}
+			}
+		}
+
+		if ($config['jsonOnly']) {
+			$config['initialMode'] = 'json';
 		}
 		return $config;
 	}
