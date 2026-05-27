@@ -392,6 +392,8 @@
 			expandedHeight: null,
 			fullscreenHeight: null,
 			userHeight: initialHeight,
+			fitToContentActive: false,
+			fitToContentRestoreHeight: null,
 			restoreParent: null,
 			restoreNext: null,
 			$movedPanel: null,
@@ -684,8 +686,14 @@
 			ev.preventDefault();
 			const startY = ev.pageY;
 			const startHeight = getMarkdownActivePanel(controller).outerHeight();
+			let resized = false;
 
 			$(document).on('mousemove.rcTextViewerResize', function (moveEv) {
+				if (!resized) {
+					controller.fitToContentActive = false;
+					controller.fitToContentRestoreHeight = null;
+					resized = true;
+				}
 				const nextHeight = Math.max(MIN_MARKDOWN_HEIGHT, startHeight + (moveEv.pageY - startY));
 				setMarkdownViewerHeight(controller, nextHeight);
 			});
@@ -694,7 +702,7 @@
 			});
 		}).on('dblclick', function (ev) {
 			ev.preventDefault();
-			expandMarkdownToContent(controller);
+			toggleMarkdownContentHeight(controller);
 		});
 	}
 
@@ -1122,6 +1130,24 @@
 	}
 
 	/**
+	 * Toggles the active Markdown panel between fit-content and its previous height.
+	 *
+	 * @param {object} controller Markdown controller.
+	 * @returns {void}
+	 */
+	function toggleMarkdownContentHeight(controller) {
+		if (controller.fitToContentActive) {
+			setMarkdownViewerHeight(controller, controller.fitToContentRestoreHeight || MIN_MARKDOWN_HEIGHT);
+			controller.fitToContentActive = false;
+			controller.fitToContentRestoreHeight = null;
+			return;
+		}
+		controller.fitToContentRestoreHeight = Math.max(getMarkdownActivePanel(controller).outerHeight() || MIN_MARKDOWN_HEIGHT, MIN_MARKDOWN_HEIGHT);
+		expandMarkdownToContent(controller);
+		controller.fitToContentActive = true;
+	}
+
+	/**
 	 * Renders a Markdown viewer and wires it to field changes.
 	 *
 	 * @param {jQuery} $control Field textarea.
@@ -1292,6 +1318,8 @@
 			expandedHeight: null,
 			fullscreenHeight: null,
 			userHeight: initialHeight,
+			fitToContentActive: false,
+			fitToContentRestoreHeight: null,
 			restoreParent: null,
 			restoreNext: null,
 			$dataCell: null,
@@ -1586,8 +1614,14 @@
 			ev.preventDefault();
 			const startY = ev.pageY;
 			const startHeight = getJsonActivePanel(controller).outerHeight();
+			let resized = false;
 
 			$(document).on('mousemove.rcTextViewerJsonResize', function (moveEv) {
+				if (!resized) {
+					controller.fitToContentActive = false;
+					controller.fitToContentRestoreHeight = null;
+					resized = true;
+				}
 				const nextHeight = Math.max(MIN_MARKDOWN_HEIGHT, startHeight + (moveEv.pageY - startY));
 				setJsonViewerHeight(controller, nextHeight, true);
 			});
@@ -1596,7 +1630,7 @@
 			});
 		}).on('dblclick', function (ev) {
 			ev.preventDefault();
-			expandJsonToContent(controller);
+			toggleJsonContentHeight(controller);
 		});
 	}
 
@@ -1760,6 +1794,24 @@
 			contentHeight = (controller.editor.session.getScreenLength() * lineHeight) + 24;
 		}
 		setJsonViewerHeight(controller, contentHeight, true);
+	}
+
+	/**
+	 * Toggles the active JSON panel between fit-content and its previous height.
+	 *
+	 * @param {object} controller JSON controller.
+	 * @returns {void}
+	 */
+	function toggleJsonContentHeight(controller) {
+		if (controller.fitToContentActive) {
+			setJsonViewerHeight(controller, controller.fitToContentRestoreHeight || MIN_MARKDOWN_HEIGHT, true);
+			controller.fitToContentActive = false;
+			controller.fitToContentRestoreHeight = null;
+			return;
+		}
+		controller.fitToContentRestoreHeight = Math.max(getJsonActivePanel(controller).outerHeight() || MIN_MARKDOWN_HEIGHT, MIN_MARKDOWN_HEIGHT);
+		expandJsonToContent(controller);
+		controller.fitToContentActive = true;
 	}
 
 	/**
