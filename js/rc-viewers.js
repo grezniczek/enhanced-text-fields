@@ -6,6 +6,7 @@
 	const EM_NAME = 'Text Viewers';
 	const VIEW_RAW = 'raw';
 	const VIEW_MARKDOWN = 'markdown';
+	const VIEW_HTML = 'html';
 	const VIEW_JSON = 'json';
 	const LAYOUT_NORMAL = 'normal';
 	const LAYOUT_EXPANDED = 'expanded';
@@ -283,18 +284,23 @@
 			'data-rc-text-viewer-field': fieldName,
 		});
 		const $tabs = $('<span/>', { class: 'rc-text-viewer-md-tabs' });
-		const rawLabel = field.readonly ? 'Raw' : 'Raw (Edit)';
 		const $rawTab = $('<a/>', {
 			href: 'javascript:;',
 			class: 'rc-text-viewer-md-tab',
 			'data-rc-md-mode': VIEW_RAW,
-			text: rawLabel,
+			text: 'Raw',
 		});
 		const $markdownTab = $('<a/>', {
 			href: 'javascript:;',
 			class: 'rc-text-viewer-md-tab',
 			'data-rc-md-mode': VIEW_MARKDOWN,
 			text: 'Markdown',
+		});
+		const $htmlTab = $('<a/>', {
+			href: 'javascript:;',
+			class: 'rc-text-viewer-md-tab',
+			'data-rc-md-mode': VIEW_HTML,
+			text: 'HTML',
 		});
 		const $actions = $('<span/>', { class: 'rc-text-viewer-md-actions' });
 		const $expandButton = createIconButton('expand', 'fa-solid fa-arrows-left-right', 'Expand to row width');
@@ -310,7 +316,19 @@
 		});
 		const $viewerScroll = $('<div/>', { class: 'rc-text-viewer-md-preview-scroll' });
 		const $viewerContent = $('<div/>', { class: 'markdown-body rc-text-viewer-md-preview-content' });
+		const editorId = `rc-text-viewer-md-ace-${fieldName}`;
+		const $editorViewer = $('<div/>', {
+			class: 'rc-text-viewer-md-editor',
+			'data-rc-text-viewer-field': fieldName,
+		});
+		const $editor = $('<div/>', { id: editorId, class: 'rc-text-viewer__ace' });
 		const $resizeHandle = $('<div/>', {
+			class: 'rc-text-viewer-md-resize-handle',
+			role: 'separator',
+			'aria-orientation': 'horizontal',
+			title: 'Drag to resize',
+		});
+		const $editorResizeHandle = $('<div/>', {
 			class: 'rc-text-viewer-md-resize-handle',
 			role: 'separator',
 			'aria-orientation': 'horizontal',
@@ -325,14 +343,18 @@
 			$viewer: $viewer,
 			$viewerScroll: $viewerScroll,
 			$viewerContent: $viewerContent,
+			$editorViewer: $editorViewer,
+			$editor: $editor,
 			$resizeHandle: $resizeHandle,
+			$editorResizeHandle: $editorResizeHandle,
 			$actions: $actions,
 			$expandButton: $expandButton,
 			$fullscreenButton: $fullscreenButton,
 			$collapseButton: $collapseButton,
 			canExpandToRowWidth: canExpandToRowWidth,
 			mdOnly: mdOnly,
-			mode: markdownConfig.initialMode === VIEW_MARKDOWN ? VIEW_MARKDOWN : VIEW_RAW,
+			editor: null,
+			mode: markdownConfig.initialMode === VIEW_HTML ? VIEW_HTML : (markdownConfig.initialMode === VIEW_MARKDOWN ? VIEW_MARKDOWN : VIEW_RAW),
 			layout: LAYOUT_NORMAL,
 			normalHeight: initialHeight || $control.outerHeight(),
 			normalWidth: $control.outerWidth(),
@@ -341,6 +363,7 @@
 			userHeight: initialHeight,
 			restoreParent: null,
 			restoreNext: null,
+			$movedPanel: null,
 			$dataCell: null,
 			$expandedRow: null,
 			bodyOverflow: null,
@@ -352,16 +375,24 @@
 
 		if (mdOnly) {
 			controller.mode = VIEW_MARKDOWN;
-			$tabs.append($markdownTab);
+			$tabs.append($markdownTab, $('<span/>', { class: 'rc-text-viewer-md-tab-separator', text: '|' }), $htmlTab);
 		}
 		else {
-			$tabs.append($rawTab, $('<span/>', { class: 'rc-text-viewer-md-tab-separator', text: '|' }), $markdownTab);
+			$tabs.append(
+				$rawTab,
+				$('<span/>', { class: 'rc-text-viewer-md-tab-separator', text: '|' }),
+				$markdownTab,
+				$('<span/>', { class: 'rc-text-viewer-md-tab-separator', text: '|' }),
+				$htmlTab
+			);
 		}
 		$actions.append($expandButton, $fullscreenButton, $collapseButton);
 		$toolbar.append($tabs, $actions);
 		$viewerScroll.append($viewerContent);
 		$viewer.append($viewerScroll, $resizeHandle);
+		$editorViewer.append($editor, $editorResizeHandle);
 		$control.before($toolbar);
+		$control.after($editorViewer);
 		$control.after($viewer);
 
 		$toolbar.on('click', '[data-rc-md-mode]', function (ev) {
@@ -376,8 +407,9 @@
 			renderMarkdown(controller);
 		}, 100));
 		initMarkdownResizeHandle(controller);
+		initMarkdownEditor(controller, editorId, field);
 		$(global).on('resize', debounce(function () {
-			if (controller.mode === VIEW_MARKDOWN && controller.layout === LAYOUT_NORMAL) {
+			if ((controller.mode === VIEW_MARKDOWN || controller.mode === VIEW_HTML) && controller.layout === LAYOUT_NORMAL) {
 				syncMarkdownNormalSize(controller, false);
 			}
 		}, 100));
@@ -413,11 +445,21 @@
 	 * @returns {void}
 	 */
 	function setMarkdownMode(controller, mode) {
-		if (controller.mdOnly || mode === VIEW_MARKDOWN) {
+		if (mode === VIEW_HTML) {
+			mode = VIEW_HTML;
+		}
+		else if (controller.mdOnly || mode === VIEW_MARKDOWN) {
 			mode = VIEW_MARKDOWN;
 		}
 		else {
 			mode = VIEW_RAW;
+		}
+
+		const previousMode = controller.mode;
+		const previousLayout = controller.layout;
+		if (mode !== VIEW_RAW && previousMode !== mode && previousLayout !== LAYOUT_NORMAL) {
+			rememberMarkdownHeight(controller);
+			restoreMarkdownLayout(controller);
 		}
 
 		controller.mode = mode;
@@ -425,13 +467,23 @@
 			restoreMarkdownLayout(controller);
 			showRawMode(controller);
 		}
+		else if (mode === VIEW_MARKDOWN) {
+			syncMarkdownNormalSize(controller, true);
+			showMarkdownEditorMode(controller);
+		}
 		else {
 			syncMarkdownNormalSize(controller, true);
-			showMarkdownMode(controller);
+			showHtmlMode(controller);
 			renderMarkdown(controller);
 		}
 
 		updateMarkdownToolbar(controller);
+		if (mode !== VIEW_RAW && previousMode !== mode && previousLayout === LAYOUT_EXPANDED) {
+			expandMarkdown(controller);
+		}
+		if (mode !== VIEW_RAW && previousMode !== mode && previousLayout === LAYOUT_FULLSCREEN) {
+			fullscreenMarkdown(controller);
+		}
 	}
 
 	/**
@@ -445,18 +497,37 @@
 		controller.$control.show();
 		controller.$expandLink.show();
 		controller.$viewer.css('display', 'none');
+		controller.$editorViewer.css('display', 'none');
 	}
 
 	/**
-	 * Shows the normal Markdown preview state.
+	 * Shows the normal Markdown editor state.
 	 *
 	 * @param {object} controller Markdown controller.
 	 * @returns {void}
 	 */
-	function showMarkdownMode(controller) {
+	function showMarkdownEditorMode(controller) {
 		restoreDataCellContents(controller);
 		controller.$control.hide();
 		controller.$expandLink.hide();
+		controller.$viewer.css('display', 'none');
+		controller.$editorViewer.css('display', 'flex');
+		if (controller.editor) {
+			controller.editor.resize();
+		}
+	}
+
+	/**
+	 * Shows the rendered Markdown HTML preview state.
+	 *
+	 * @param {object} controller Markdown controller.
+	 * @returns {void}
+	 */
+	function showHtmlMode(controller) {
+		restoreDataCellContents(controller);
+		controller.$control.hide();
+		controller.$expandLink.hide();
+		controller.$editorViewer.css('display', 'none');
 		controller.$viewer.css('display', 'flex');
 	}
 
@@ -468,20 +539,20 @@
 	 */
 	function updateMarkdownToolbar(controller) {
 		LOGGER.log(`Updating Markdown toolbar for '${controller.fieldName}' in mode '${controller.mode}' and layout '${controller.layout}'`, controller);
-		const isMarkdown = controller.mode === VIEW_MARKDOWN;
 		controller.$toolbar.find('[data-rc-md-mode]').each(function () {
 			const $tab = $(this);
 			const active = $tab.attr('data-rc-md-mode') === controller.mode;
 			$tab.toggleClass('active', active);
 			$tab.attr('aria-current', active ? 'true' : 'false');
 		});
-		controller.$actions[isMarkdown ? 'show' : 'hide']();
-		controller.$expandButton[controller.canExpandToRowWidth && controller.layout !== LAYOUT_EXPANDED ? 'show' : 'hide']();
-		controller.$fullscreenButton[controller.layout !== LAYOUT_FULLSCREEN ? 'show' : 'hide']();
-		controller.$collapseButton[controller.canCollapse || controller.layout === LAYOUT_FULLSCREEN || controller.layout === LAYOUT_EXPANDED ? 'show' : 'hide']();
+		const isEnhancedMode = controller.mode === VIEW_MARKDOWN || controller.mode === VIEW_HTML;
+		controller.$actions[isEnhancedMode ? 'show' : 'hide']();
+		controller.$expandButton[isEnhancedMode && controller.canExpandToRowWidth && controller.layout !== LAYOUT_EXPANDED ? 'show' : 'hide']();
+		controller.$fullscreenButton[isEnhancedMode && controller.layout !== LAYOUT_FULLSCREEN ? 'show' : 'hide']();
+		controller.$collapseButton[isEnhancedMode && (controller.layout === LAYOUT_FULLSCREEN || controller.layout === LAYOUT_EXPANDED) ? 'show' : 'hide']();
 		controller.$toolbar
 			.attr('data-rc-md-layout', controller.layout)
-			.toggleClass('rc-text-viewer-md-toolbar--markdown', isMarkdown);
+			.toggleClass('rc-text-viewer-md-toolbar--markdown', isEnhancedMode);
 	}
 
 	/**
@@ -513,19 +584,60 @@
 	}
 
 	/**
+	 * Initializes the Ace-backed Markdown source editor.
+	 *
+	 * @param {object} controller Markdown controller.
+	 * @param {string} editorId Ace editor element id.
+	 * @param {object} field Field configuration.
+	 * @returns {void}
+	 */
+	function initMarkdownEditor(controller, editorId, field) {
+		ensureScript(state.config.urls.ace, function () {
+			return !!global.ace;
+		}).then(function () {
+			const editor = global.ace.edit(editorId);
+			controller.editor = editor;
+			state.editors[`${controller.fieldName}-markdown`] = editor;
+			editor.setTheme('ace/theme/textmate');
+			editor.setReadOnly(!!field.readonly);
+			editor.setShowPrintMargin(false);
+			editor.setHighlightActiveLine(false);
+			editor.session.setUseWorker(false);
+			editor.renderer.setShowGutter(true);
+			editor.renderer.setScrollMargin(6, 6, 0, 0);
+			editor.setValue(controller.$control.val() || '', -1);
+			editor.session.on('change', debounce(function () {
+				if (editor.getReadOnly()) {
+					return;
+				}
+				controller.$control.val(editor.getValue()).trigger('change');
+				renderMarkdown(controller);
+			}, 100));
+			controller.$control.on('input change keyup', debounce(function () {
+				if (editor.getValue() !== (controller.$control.val() || '')) {
+					editor.setValue(controller.$control.val() || '', -1);
+				}
+			}, 100));
+			editor.resize();
+		}).catch(function (e) {
+			LOGGER.warn('Ace failed to load for Markdown editor', e);
+		});
+	}
+
+	/**
 	 * Initializes the full-width Markdown resize handle.
 	 *
 	 * @param {object} controller Markdown controller.
 	 * @returns {void}
 	 */
 	function initMarkdownResizeHandle(controller) {
-		controller.$resizeHandle.on('mousedown', function (ev) {
+		controller.$resizeHandle.add(controller.$editorResizeHandle).on('mousedown', function (ev) {
 			if (controller.layout === LAYOUT_FULLSCREEN) {
 				return;
 			}
 			ev.preventDefault();
 			const startY = ev.pageY;
-			const startHeight = controller.$viewer.outerHeight();
+			const startHeight = getMarkdownActivePanel(controller).outerHeight();
 
 			$(document).on('mousemove.rcTextViewerResize', function (moveEv) {
 				const nextHeight = Math.max(MIN_MARKDOWN_HEIGHT, startHeight + (moveEv.pageY - startY));
@@ -544,7 +656,7 @@
 	 * @returns {void}
 	 */
 	function rememberMarkdownHeight(controller) {
-		const height = controller.$viewer.outerHeight();
+		const height = getMarkdownActivePanel(controller).outerHeight();
 		if (!height) {
 			return;
 		}
@@ -568,10 +680,11 @@
 	 */
 	function setMarkdownViewerHeight(controller, height) {
 		height = Math.max(MIN_MARKDOWN_HEIGHT, Math.floor(height));
-		controller.$viewer.css({
+		controller.$viewer.add(controller.$editorViewer).css({
 			height: height + 'px',
 			'min-height': MIN_MARKDOWN_HEIGHT + 'px',
 		});
+		controller.$editor.css('min-height', '');
 		if (controller.layout === LAYOUT_NORMAL) {
 			controller.normalHeight = height;
 			controller.expandedHeight = height;
@@ -584,6 +697,9 @@
 		}
 		if (controller.layout === LAYOUT_FULLSCREEN) {
 			controller.fullscreenHeight = height;
+		}
+		if (controller.editor) {
+			controller.editor.resize();
 		}
 	}
 
@@ -620,10 +736,20 @@
 			'min-height': MIN_MARKDOWN_HEIGHT + 'px',
 			'margin-left': '',
 		});
+		controller.$editorViewer.css({
+			width: cssWidth,
+			height: height + 'px',
+			'min-height': MIN_MARKDOWN_HEIGHT + 'px',
+			'margin-left': '',
+		});
+		controller.$editor.css('min-height', '');
 		controller.$toolbar.css({
 			width: cssWidth,
 			'margin-left': '',
 		});
+		if (controller.editor) {
+			controller.editor.resize();
+		}
 	}
 
 	/**
@@ -636,28 +762,29 @@
 		if (!controller.canExpandToRowWidth) {
 			return;
 		}
-		if (controller.mode !== VIEW_MARKDOWN) {
-			setMarkdownMode(controller, VIEW_MARKDOWN);
+		if (controller.mode !== VIEW_MARKDOWN && controller.mode !== VIEW_HTML) {
+			setMarkdownMode(controller, VIEW_HTML);
 		}
 		if (controller.layout !== LAYOUT_NORMAL) {
 			rememberMarkdownHeight(controller);
 			restoreMarkdownLayout(controller);
 		}
 
+		const $panel = getMarkdownActivePanel(controller);
 		const $target = getMarkdownExpandTarget(controller);
 		const $expandedCell = createExpandedRow(controller);
-		const rowWidth = Math.max((controller.$row.length ? controller.$row.outerWidth() : $target.outerWidth()), controller.$viewer.outerWidth());
-		const currentHeight = controller.$viewer.outerHeight();
+		const rowWidth = Math.max((controller.$row.length ? controller.$row.outerWidth() : $target.outerWidth()), $panel.outerWidth());
+		const currentHeight = $panel.outerHeight();
 		const expandedHeight = controller.userHeight || controller.expandedHeight || Math.max(currentHeight, Math.floor(rowWidth / 2));
 		captureMarkdownPlacement(controller);
 		$expandedCell.append(controller.$toolbar);
-		$expandedCell.append(controller.$viewer);
+		$expandedCell.append($panel);
 		hideDataCellContents(controller, $target);
 		controller.$toolbar.css({
 			width: '100%',
 			'margin-left': '',
 		});
-		controller.$viewer.css({
+		$panel.css({
 			width: '100%',
 			height: expandedHeight + 'px',
 			'min-height': MIN_MARKDOWN_HEIGHT + 'px',
@@ -665,7 +792,7 @@
 		});
 		controller.layout = LAYOUT_EXPANDED;
 		controller.$toolbar.addClass('rc-text-viewer-md-toolbar--expanded');
-		controller.$viewer.addClass('rc-text-viewer-md-preview--expanded');
+		$panel.addClass('rc-text-viewer-md-preview--expanded');
 		updateMarkdownToolbar(controller);
 	}
 
@@ -676,8 +803,8 @@
 	 * @returns {void}
 	 */
 	function fullscreenMarkdown(controller) {
-		if (controller.mode !== VIEW_MARKDOWN) {
-			setMarkdownMode(controller, VIEW_MARKDOWN);
+		if (controller.mode !== VIEW_MARKDOWN && controller.mode !== VIEW_HTML) {
+			setMarkdownMode(controller, VIEW_HTML);
 		}
 		if (controller.layout !== LAYOUT_FULLSCREEN) {
 			rememberMarkdownHeight(controller);
@@ -685,16 +812,17 @@
 		if (controller.layout !== LAYOUT_FULLSCREEN) {
 			captureMarkdownPlacement(controller);
 		}
+		const $panel = getMarkdownActivePanel(controller);
 		controller.bodyOverflow = $('body').css('overflow');
 		$('body').css('overflow', 'hidden');
 		$('body').append(controller.$toolbar);
-		$('body').append(controller.$viewer);
-		const fullscreenHeight = controller.fullscreenHeight || Math.max(controller.$viewer.outerHeight(), $(global).height() - 64);
+		$('body').append($panel);
+		const fullscreenHeight = controller.fullscreenHeight || Math.max($panel.outerHeight(), $(global).height() - 64);
 		controller.$toolbar.css({
 			width: '',
 			'margin-left': '',
 		});
-		controller.$viewer.css({
+		$panel.css({
 			width: '',
 			height: fullscreenHeight + 'px',
 			'min-height': '',
@@ -703,8 +831,11 @@
 		controller.layout = LAYOUT_FULLSCREEN;
 		controller.$toolbar.removeClass('rc-text-viewer-md-toolbar--expanded');
 		controller.$toolbar.addClass('rc-text-viewer-md-toolbar--fullscreen');
-		controller.$viewer.removeClass('rc-text-viewer-md-preview--expanded');
-		controller.$viewer.addClass('rc-text-viewer-md-preview--fullscreen');
+		$panel.removeClass('rc-text-viewer-md-preview--expanded');
+		$panel.addClass('rc-text-viewer-md-preview--fullscreen');
+		if (controller.editor) {
+			controller.editor.resize();
+		}
 		updateMarkdownToolbar(controller);
 	}
 
@@ -722,7 +853,12 @@
 		rememberMarkdownHeight(controller);
 		restoreMarkdownLayout(controller);
 		syncMarkdownNormalSize(controller, false);
-		showMarkdownMode(controller);
+		if (controller.mode === VIEW_MARKDOWN) {
+			showMarkdownEditorMode(controller);
+		}
+		else {
+			showHtmlMode(controller);
+		}
 		updateMarkdownToolbar(controller);
 	}
 
@@ -790,7 +926,7 @@
 		}
 		controller.layout = LAYOUT_NORMAL;
 		controller.$toolbar.removeClass('rc-text-viewer-md-toolbar--expanded rc-text-viewer-md-toolbar--fullscreen');
-		controller.$viewer.removeClass('rc-text-viewer-md-preview--expanded rc-text-viewer-md-preview--fullscreen');
+		controller.$viewer.add(controller.$editorViewer).removeClass('rc-text-viewer-md-preview--expanded rc-text-viewer-md-preview--fullscreen');
 		if (controller.bodyOverflow !== null) {
 			$('body').css('overflow', controller.bodyOverflow);
 			controller.bodyOverflow = null;
@@ -850,8 +986,10 @@
 		if (controller.restoreParent) {
 			return;
 		}
-		controller.restoreParent = controller.$viewer.parent()[0];
-		controller.restoreNext = controller.$viewer[0].nextSibling;
+		const $panel = getMarkdownActivePanel(controller);
+		controller.$movedPanel = $panel;
+		controller.restoreParent = $panel.parent()[0];
+		controller.restoreNext = $panel[0].nextSibling;
 	}
 
 	/**
@@ -864,15 +1002,27 @@
 		if (!controller.restoreParent) {
 			return;
 		}
+		const $panel = controller.$movedPanel || getMarkdownActivePanel(controller);
 		controller.$control.before(controller.$toolbar);
 		if (controller.restoreNext) {
-			controller.restoreParent.insertBefore(controller.$viewer[0], controller.restoreNext);
+			controller.restoreParent.insertBefore($panel[0], controller.restoreNext);
 		}
 		else {
-			controller.restoreParent.appendChild(controller.$viewer[0]);
+			controller.restoreParent.appendChild($panel[0]);
 		}
 		controller.restoreParent = null;
 		controller.restoreNext = null;
+		controller.$movedPanel = null;
+	}
+
+	/**
+	 * Returns the active enhanced Markdown panel.
+	 *
+	 * @param {object} controller Markdown controller.
+	 * @returns {jQuery}
+	 */
+	function getMarkdownActivePanel(controller) {
+		return controller.mode === VIEW_MARKDOWN ? controller.$editorViewer : controller.$viewer;
 	}
 
 	/**
@@ -965,17 +1115,24 @@
 			: null;
 		const $expandLink = $('#' + escapeSelector(fieldName) + '-expand');
 		const editorId = `rc-text-viewer-ace-${fieldName}`;
-		const rawLabel = field.readonly ? 'Raw' : 'Raw (Edit)';
 		const $toolbar = $('<div/>', {
 			class: 'rc-text-viewer-md-toolbar rc-text-viewer-json-toolbar d-print-none',
 			'data-rc-text-viewer-field': fieldName,
 		});
 		const $tabs = $('<span/>', { class: 'rc-text-viewer-md-tabs' });
+		const $editability = $('<span/>', {
+			class: 'rc-text-viewer-edit-state',
+			title: field.readonly ? 'Readonly' : 'Editable',
+			'aria-label': field.readonly ? 'Readonly' : 'Editable',
+		}).append($('<i/>', {
+			class: field.readonly ? 'fa-solid fa-pencil-slash text-danger' : 'fa-solid fa-pencil',
+			'aria-hidden': 'true',
+		}));
 		const $rawTab = $('<a/>', {
 			href: 'javascript:;',
 			class: 'rc-text-viewer-md-tab',
 			'data-rc-json-mode': VIEW_RAW,
-			text: rawLabel,
+			text: 'Raw',
 		});
 		const $jsonTab = $('<a/>', {
 			href: 'javascript:;',
@@ -1048,10 +1205,10 @@
 
 		if (jsonOnly) {
 			controller.mode = VIEW_JSON;
-			$tabs.append($jsonTab, $status);
+			$tabs.append($editability, $jsonTab, $status);
 		}
 		else {
-			$tabs.append($rawTab, $('<span/>', { class: 'rc-text-viewer-md-tab-separator', text: '|' }), $jsonTab, $status);
+			$tabs.append($editability, $rawTab, $('<span/>', { class: 'rc-text-viewer-md-tab-separator', text: '|' }), $jsonTab, $status);
 		}
 		$actions.append($expandButton, $fullscreenButton, $collapseButton);
 		$toolbar.append($tabs, $actions);

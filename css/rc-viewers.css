@@ -82,6 +82,13 @@
 	color: #b45309;
 }
 
+.rc-text-viewer-edit-state {
+	align-items: center;
+	color: #4b5563;
+	display: inline-flex;
+	min-width: 14px;
+}
+
 .rc-text-viewer__fallback {
 	background: #fbfbfc;
 	color: #24292f;
@@ -210,6 +217,28 @@ tr[sq_id]:has(td.data) .rc-text-viewer-md-toolbar {
 	position: relative;
 	resize: none;
 	margin-bottom: 8px;
+}
+
+.rc-text-viewer-md-editor {
+	background: #fff;
+	border: 1px solid #d4d8dd;
+	border-radius: 0 0 4px 4px;
+	box-sizing: border-box;
+	display: none;
+	flex-direction: column;
+	margin-bottom: 8px;
+	max-width: 100%;
+	min-width: 0;
+	overflow: hidden;
+	padding: 0;
+	position: relative;
+	resize: none;
+}
+
+.rc-text-viewer-md-editor .rc-text-viewer__ace {
+	flex: 1 1 auto;
+	height: auto;
+	min-height: 0;
 }
 
 .rc-text-viewer-md-preview-scroll {

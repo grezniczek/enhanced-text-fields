@@ -281,6 +281,9 @@ class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
 				if ($mode === 'md') {
 					$config['initialMode'] = 'markdown';
 				}
+				if ($mode === 'html') {
+					$config['initialMode'] = 'html';
+				}
 				if ($mode === 'raw') {
 					$config['initialMode'] = 'raw';
 				}

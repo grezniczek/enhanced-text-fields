@@ -29,13 +29,15 @@ fields on data entry forms and survey pages.
 
 `@MARKDOWN-VIEWER` accepts a quoted, comma-separated parameter list:
 
-- `@MARKDOWN-VIEWER="initial:md"` opens the field in Markdown mode.
+- `@MARKDOWN-VIEWER="initial:md"` opens the field in Markdown editor mode.
+- `@MARKDOWN-VIEWER="initial:html"` opens the field in rendered HTML preview
+  mode.
 - `@MARKDOWN-VIEWER="initial:raw"` opens the field in Raw mode. This is the
   default when no parameter is provided.
 - `@MARKDOWN-VIEWER="height:200"` sets the initial Markdown viewer height in
   pixels.
-- `@MARKDOWN-VIEWER="md-only"` opens in Markdown mode and hides the Raw tab.
-  This takes precedence over `initial:*` parameters.
+- `@MARKDOWN-VIEWER="md-only"` hides the Raw tab. This takes precedence over
+  `initial:*` parameters.
 
 There is intentionally no `raw-only` option; omit the action tag when Markdown
 viewing should not be available.
