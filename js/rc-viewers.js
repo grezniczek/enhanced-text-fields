@@ -12,6 +12,7 @@
 	const LAYOUT_EXPANDED = 'expanded';
 	const LAYOUT_FULLSCREEN = 'fullscreen';
 	const MIN_MARKDOWN_HEIGHT = 100;
+	const CONTROLLED_FIELD_CLASS = 'rc-text-viewer-controlled-field';
 
 	if (global[NS]) {
 		return;
@@ -110,7 +111,7 @@
 			class: 'rc-text-viewer__icon-button',
 			title: title,
 			'aria-label': title,
-			'data-rc-md-action': action,
+			'data-rc-text-viewer-action': action,
 		}).append($('<i/>', { class: iconClass, 'aria-hidden': 'true' }));
 	}
 
@@ -129,40 +130,6 @@
 			$('<i/>', { class: 'fa-solid fa-pencil rc-text-viewer-edit-state__pencil', 'aria-hidden': 'true' }),
 			$('<i/>', { class: 'fa-solid fa-slash rc-text-viewer-edit-state__slash', 'aria-hidden': 'true' })
 		);
-	}
-
-	/**
-	 * Creates the viewer shell next to a REDCap field control.
-	 *
-	 * @param {jQuery} $control Field input or textarea.
-	 * @param {string} fieldName REDCap field name.
-	 * @param {string} viewerType Viewer type.
-	 * @returns {jQuery}
-	 */
-	function createViewerShell($control, fieldName, viewerType) {
-		const shellId = `rc-text-viewer-${viewerType}-${fieldName}`;
-		const existing = document.getElementById(shellId);
-		if (existing) {
-			return $(existing);
-		}
-
-		const label = viewerType === 'json' ? 'JSON viewer' : 'Markdown preview';
-		const $shell = $('<div/>', {
-			id: shellId,
-			class: `rc-text-viewer rc-text-viewer--${viewerType}`,
-			'data-rc-text-viewer-field': fieldName,
-			'data-rc-text-viewer-type': viewerType,
-		});
-		const $toolbar = $('<div/>', { class: 'rc-text-viewer__toolbar' });
-		const $title = $('<span/>', { class: 'rc-text-viewer__title', text: label });
-		const $status = $('<span/>', { class: 'rc-text-viewer__status', 'aria-live': 'polite' });
-		const $body = $('<div/>', { class: 'rc-text-viewer__body' });
-
-		$toolbar.append($title, $status);
-		$shell.append($toolbar, $body);
-		$control.after($shell);
-
-		return $shell;
 	}
 
 	/**
@@ -265,18 +232,122 @@
 	}
 
 	/**
-	 * Applies custom readonly handling for Markdown fields.
+	 * Marks a REDCap input as managed by this External Module.
 	 *
-	 * @param {jQuery} $control Textarea control.
+	 * @param {jQuery} $control Field input or textarea.
+	 * @returns {void}
+	 */
+	function markControlledField($control) {
+		$control.addClass(CONTROLLED_FIELD_CLASS);
+	}
+
+	/**
+	 * Applies custom readonly handling for controlled fields.
+	 *
+	 * @param {jQuery} $control Field input or textarea.
 	 * @param {jQuery} $row REDCap field row.
 	 * @returns {void}
 	 */
-	function applyMarkdownReadonly($control, $row) {
+	function applyReadonlyState($control, $row) {
 		$row.addClass('rc-text-viewer-readonly-row');
 		$control.prop('disabled', false);
 		$control.prop('readonly', true);
 		$control.attr('aria-readonly', 'true');
 		$control.addClass('rc-text-viewer-readonly-control');
+	}
+
+	/**
+	 * Creates shared controller state for a text viewer field.
+	 *
+	 * @param {object} options Controller options.
+	 * @returns {object}
+	 */
+	function createTextViewerController(options) {
+		const $control = options.$control;
+		const field = options.field;
+		const fieldName = field.name;
+		const initialHeight = options.initialHeight || null;
+		markControlledField($control);
+
+		return {
+			viewerType: options.viewerType,
+			fieldName: fieldName,
+			$control: $control,
+			$row: $(`tr[sq_id="${escapeSelector(fieldName)}"]`).first(),
+			$expandLink: $('#' + escapeSelector(fieldName) + '-expand'),
+			$toolbar: options.$toolbar,
+			$viewer: options.$viewer,
+			$editorViewer: options.$editorViewer || $(),
+			$editor: options.$editor || $(),
+			$rawPanel: options.$rawPanel || $(),
+			$resizeHandle: options.$resizeHandle || $(),
+			$editorResizeHandle: options.$editorResizeHandle || $(),
+			$rawResizeHandle: options.$rawResizeHandle || $(),
+			$actions: options.$actions,
+			$expandButton: options.$expandButton,
+			$fullscreenButton: options.$fullscreenButton,
+			$collapseButton: options.$collapseButton,
+			editor: null,
+			rowConfig: field.rowConfig === 'full' ? 'full' : 'split',
+			canExpandToRowWidth: field.rowConfig === 'split',
+			canExpandRaw: $control.is('textarea'),
+			layout: LAYOUT_NORMAL,
+			normalHeight: initialHeight || $control.outerHeight() || MIN_MARKDOWN_HEIGHT,
+			normalWidth: $control.outerWidth(),
+			expandedHeight: null,
+			fullscreenHeight: null,
+			userHeight: initialHeight,
+			fitToContentActive: false,
+			fitToContentRestoreHeight: null,
+			restoreParent: null,
+			restoreNext: null,
+			$movedPanel: null,
+			$dataCell: null,
+			$expandedRow: null,
+			bodyOverflow: null,
+		};
+	}
+
+	/**
+	 * Handles shared toolbar action buttons.
+	 *
+	 * @param {object} controller Text viewer controller.
+	 * @param {string} action Action identifier.
+	 * @returns {void}
+	 */
+	function handleTextViewerAction(controller, action) {
+		if (action === 'expand') {
+			expandTextViewer(controller);
+		}
+		if (action === 'fullscreen') {
+			fullscreenTextViewer(controller);
+		}
+		if (action === 'collapse') {
+			collapseTextViewer(controller);
+		}
+	}
+
+	/**
+	 * Updates shared toolbar active states and expansion buttons.
+	 *
+	 * @param {object} controller Text viewer controller.
+	 * @returns {void}
+	 */
+	function updateTextViewerToolbar(controller) {
+		const isPanelMode = controller.isPanelMode();
+		controller.$toolbar.find('[' + controller.modeAttribute + ']').each(function () {
+			const $tab = $(this);
+			const active = $tab.attr(controller.modeAttribute) === controller.mode;
+			$tab.toggleClass('active', active);
+			$tab.attr('aria-current', active ? 'true' : 'false');
+		});
+		controller.$actions[isPanelMode ? 'show' : 'hide']();
+		controller.$expandButton[isPanelMode && controller.canExpandToRowWidth && controller.layout !== LAYOUT_EXPANDED ? 'show' : 'hide']();
+		controller.$fullscreenButton[isPanelMode && controller.layout !== LAYOUT_FULLSCREEN ? 'show' : 'hide']();
+		controller.$collapseButton[isPanelMode && (controller.layout === LAYOUT_FULLSCREEN || controller.layout === LAYOUT_EXPANDED) ? 'show' : 'hide']();
+		controller.$toolbar
+			.attr(controller.layoutAttribute, controller.layout)
+			.toggleClass('rc-text-viewer-md-toolbar--markdown', isPanelMode);
 	}
 
 	/**
@@ -293,9 +364,7 @@
 		const initialHeight = Number.isInteger(markdownConfig.height) && markdownConfig.height > 0
 			? Math.max(markdownConfig.height, MIN_MARKDOWN_HEIGHT)
 			: null;
-		const $row = $(`tr[sq_id="${escapeSelector(fieldName)}"]`).first();
 		const canExpandToRowWidth = field.rowConfig === 'split';
-		const $expandLink = $('#' + escapeSelector(fieldName) + '-expand');
 		const $toolbar = $('<div/>', {
 			class: 'rc-text-viewer-md-toolbar d-print-none',
 			'data-rc-text-viewer-field': fieldName,
@@ -362,15 +431,12 @@
 			'aria-orientation': 'horizontal',
 			title: 'Drag to resize',
 		});
-		const controller = {
-			fieldName: fieldName,
+		const controller = createTextViewerController({
+			viewerType: 'markdown',
+			field: field,
 			$control: $control,
-			$row: $row,
-			$expandLink: $expandLink,
 			$toolbar: $toolbar,
 			$viewer: $viewer,
-			$viewerScroll: $viewerScroll,
-			$viewerContent: $viewerContent,
 			$editorViewer: $editorViewer,
 			$editor: $editor,
 			$rawPanel: $rawPanel,
@@ -381,29 +447,29 @@
 			$expandButton: $expandButton,
 			$fullscreenButton: $fullscreenButton,
 			$collapseButton: $collapseButton,
-			canExpandToRowWidth: canExpandToRowWidth,
-			canExpandRaw: $control.is('textarea'),
+			initialHeight: initialHeight,
+		});
+		$.extend(controller, {
+			$viewerScroll: $viewerScroll,
+			$viewerContent: $viewerContent,
 			mdOnly: mdOnly,
-			editor: null,
 			mode: markdownConfig.initialMode === VIEW_HTML ? VIEW_HTML : (markdownConfig.initialMode === VIEW_MARKDOWN ? VIEW_MARKDOWN : VIEW_RAW),
-			layout: LAYOUT_NORMAL,
-			normalHeight: initialHeight || $control.outerHeight(),
-			normalWidth: $control.outerWidth(),
-			expandedHeight: null,
-			fullscreenHeight: null,
-			userHeight: initialHeight,
-			fitToContentActive: false,
-			fitToContentRestoreHeight: null,
-			restoreParent: null,
-			restoreNext: null,
-			$movedPanel: null,
-			$dataCell: null,
-			$expandedRow: null,
-			bodyOverflow: null,
-		};
+			getActivePanel: function () { return getMarkdownActivePanel(controller); },
+			getPanelSet: function () { return controller.$viewer.add(controller.$editorViewer).add(controller.$rawPanel); },
+			getContentHeight: function () { return getMarkdownContentHeight(controller); },
+			setHeight: function (height, userResize) { setTextViewerHeight(controller, height, userResize !== false); },
+			syncSize: function (captureHeight) { syncTextViewerNormalSize(controller, captureHeight); },
+			restoreVisibleMode: function () { restoreMarkdownVisibleMode(controller); },
+			setMode: function (mode) { setMarkdownMode(controller, mode); },
+			updateToolbar: function () { updateMarkdownToolbar(controller); },
+			isPanelMode: function () { return controller.mode === VIEW_MARKDOWN || controller.mode === VIEW_HTML || (controller.mode === VIEW_RAW && controller.canExpandRaw); },
+			modeAttribute: 'data-rc-md-mode',
+			layoutAttribute: 'data-rc-md-layout',
+			defaultMode: VIEW_HTML,
+		});
 
 		if (field.readonly) {
-			applyMarkdownReadonly($control, $row);
+			applyReadonlyState($control, controller.$row);
 		}
 
 		if (mdOnly) {
@@ -438,42 +504,23 @@
 				setMarkdownMode(controller, mode);
 			}
 		});
-		$toolbar.on('click', '[data-rc-md-action]', function (ev) {
+		$toolbar.on('click', '[data-rc-text-viewer-action]', function (ev) {
 			ev.preventDefault();
-			handleMarkdownAction(controller, $(this).attr('data-rc-md-action'));
+			handleTextViewerAction(controller, $(this).attr('data-rc-text-viewer-action'));
 		});
 		$control.on('input change keyup', debounce(function () {
 			renderMarkdown(controller);
 		}, 100));
-		initMarkdownResizeHandle(controller);
+		initTextViewerResizeHandles(controller);
 		initMarkdownEditor(controller, editorId, field);
 		$(global).on('resize', debounce(function () {
 			if ((controller.mode === VIEW_MARKDOWN || controller.mode === VIEW_HTML) && controller.layout === LAYOUT_NORMAL) {
-				syncMarkdownNormalSize(controller, false);
+				syncTextViewerNormalSize(controller, false);
 			}
 		}, 100));
 
 		setMarkdownMode(controller, controller.mode);
 		return controller;
-	}
-
-	/**
-	 * Handles Markdown action buttons.
-	 *
-	 * @param {object} controller Markdown controller.
-	 * @param {string} action Action identifier.
-	 * @returns {void}
-	 */
-	function handleMarkdownAction(controller, action) {
-		if (action === 'expand') {
-			expandMarkdown(controller);
-		}
-		if (action === 'fullscreen') {
-			fullscreenMarkdown(controller);
-		}
-		if (action === 'collapse') {
-			collapseMarkdown(controller);
-		}
 	}
 
 	/**
@@ -497,31 +544,31 @@
 		const previousMode = controller.mode;
 		const previousLayout = controller.layout;
 		if (previousMode !== mode && previousLayout !== LAYOUT_NORMAL) {
-			rememberMarkdownHeight(controller);
-			restoreMarkdownLayout(controller);
+			rememberTextViewerHeight(controller);
+			restoreTextViewerLayout(controller);
 		}
 
 		controller.mode = mode;
 		if (mode === VIEW_RAW) {
-			syncMarkdownNormalSize(controller, true);
+			syncTextViewerNormalSize(controller, true);
 			showRawMode(controller);
 		}
 		else if (mode === VIEW_MARKDOWN) {
-			syncMarkdownNormalSize(controller, true);
+			syncTextViewerNormalSize(controller, true);
 			showMarkdownEditorMode(controller);
 		}
 		else {
-			syncMarkdownNormalSize(controller, true);
+			syncTextViewerNormalSize(controller, true);
 			showHtmlMode(controller);
 			renderMarkdown(controller);
 		}
 
 		updateMarkdownToolbar(controller);
 		if (previousMode !== mode && previousLayout === LAYOUT_EXPANDED) {
-			expandMarkdown(controller);
+			expandTextViewer(controller);
 		}
 		if (previousMode !== mode && previousLayout === LAYOUT_FULLSCREEN) {
-			fullscreenMarkdown(controller);
+			fullscreenTextViewer(controller);
 		}
 	}
 
@@ -580,6 +627,24 @@
 	}
 
 	/**
+	 * Restores the visible panel for the current Markdown mode.
+	 *
+	 * @param {object} controller Markdown controller.
+	 * @returns {void}
+	 */
+	function restoreMarkdownVisibleMode(controller) {
+		if (controller.mode === VIEW_RAW) {
+			showRawMode(controller);
+			return;
+		}
+		if (controller.mode === VIEW_MARKDOWN) {
+			showMarkdownEditorMode(controller);
+			return;
+		}
+		showHtmlMode(controller);
+	}
+
+	/**
 	 * Updates toolbar active states and visible action buttons.
 	 *
 	 * @param {object} controller Markdown controller.
@@ -587,20 +652,7 @@
 	 */
 	function updateMarkdownToolbar(controller) {
 		LOGGER.log(`Updating Markdown toolbar for '${controller.fieldName}' in mode '${controller.mode}' and layout '${controller.layout}'`, controller);
-		controller.$toolbar.find('[data-rc-md-mode]').each(function () {
-			const $tab = $(this);
-			const active = $tab.attr('data-rc-md-mode') === controller.mode;
-			$tab.toggleClass('active', active);
-			$tab.attr('aria-current', active ? 'true' : 'false');
-		});
-		const isPanelMode = controller.mode === VIEW_MARKDOWN || controller.mode === VIEW_HTML || (controller.mode === VIEW_RAW && controller.canExpandRaw);
-		controller.$actions[isPanelMode ? 'show' : 'hide']();
-		controller.$expandButton[isPanelMode && controller.canExpandToRowWidth && controller.layout !== LAYOUT_EXPANDED ? 'show' : 'hide']();
-		controller.$fullscreenButton[isPanelMode && controller.layout !== LAYOUT_FULLSCREEN ? 'show' : 'hide']();
-		controller.$collapseButton[isPanelMode && (controller.layout === LAYOUT_FULLSCREEN || controller.layout === LAYOUT_EXPANDED) ? 'show' : 'hide']();
-		controller.$toolbar
-			.attr('data-rc-md-layout', controller.layout)
-			.toggleClass('rc-text-viewer-md-toolbar--markdown', isPanelMode);
+		updateTextViewerToolbar(controller);
 	}
 
 	/**
@@ -673,47 +725,48 @@
 	}
 
 	/**
-	 * Initializes the full-width Markdown resize handle.
+	 * Initializes the full-width resize handles.
 	 *
-	 * @param {object} controller Markdown controller.
+	 * @param {object} controller Text viewer controller.
 	 * @returns {void}
 	 */
-	function initMarkdownResizeHandle(controller) {
+	function initTextViewerResizeHandles(controller) {
 		controller.$resizeHandle.add(controller.$editorResizeHandle).add(controller.$rawResizeHandle).on('mousedown', function (ev) {
 			if (controller.layout === LAYOUT_FULLSCREEN) {
 				return;
 			}
 			ev.preventDefault();
 			const startY = ev.pageY;
-			const startHeight = getMarkdownActivePanel(controller).outerHeight();
+			const startHeight = controller.getActivePanel().outerHeight();
 			let resized = false;
 
-			$(document).on('mousemove.rcTextViewerResize', function (moveEv) {
+			const resizeNamespace = '.rcTextViewerResize' + String(controller.fieldName).replace(/\W/g, '');
+			$(document).on('mousemove' + resizeNamespace, function (moveEv) {
 				if (!resized) {
 					controller.fitToContentActive = false;
 					controller.fitToContentRestoreHeight = null;
 					resized = true;
 				}
 				const nextHeight = Math.max(MIN_MARKDOWN_HEIGHT, startHeight + (moveEv.pageY - startY));
-				setMarkdownViewerHeight(controller, nextHeight);
+				controller.setHeight(nextHeight, true);
 			});
-			$(document).on('mouseup.rcTextViewerResize', function () {
-				$(document).off('.rcTextViewerResize');
+			$(document).on('mouseup' + resizeNamespace, function () {
+				$(document).off(resizeNamespace);
 			});
 		}).on('dblclick', function (ev) {
 			ev.preventDefault();
-			toggleMarkdownContentHeight(controller);
+			toggleTextViewerContentHeight(controller);
 		});
 	}
 
 	/**
 	 * Stores the current viewer height for its active layout.
 	 *
-	 * @param {object} controller Markdown controller.
+	 * @param {object} controller Text viewer controller.
 	 * @returns {void}
 	 */
-	function rememberMarkdownHeight(controller) {
-		const height = getMarkdownActivePanel(controller).outerHeight();
+	function rememberTextViewerHeight(controller) {
+		const height = controller.getActivePanel().outerHeight();
 		if (!height) {
 			return;
 		}
@@ -731,13 +784,13 @@
 	/**
 	 * Sets and remembers the viewer height for its active layout.
 	 *
-	 * @param {object} controller Markdown controller.
+	 * @param {object} controller Text viewer controller.
 	 * @param {number} height Viewer height in pixels.
 	 * @returns {void}
 	 */
-	function setMarkdownViewerHeight(controller, height) {
+	function setTextViewerHeight(controller, height, userResize) {
 		height = Math.max(MIN_MARKDOWN_HEIGHT, Math.floor(height));
-		controller.$viewer.add(controller.$editorViewer).add(controller.$rawPanel).css({
+		controller.getPanelSet().css({
 			height: height + 'px',
 			'min-height': MIN_MARKDOWN_HEIGHT + 'px',
 		});
@@ -746,12 +799,16 @@
 		if (controller.layout === LAYOUT_NORMAL) {
 			controller.normalHeight = height;
 			controller.expandedHeight = height;
-			controller.userHeight = height;
+			if (userResize !== false) {
+				controller.userHeight = height;
+			}
 		}
 		if (controller.layout === LAYOUT_EXPANDED) {
 			controller.normalHeight = height;
 			controller.expandedHeight = height;
-			controller.userHeight = height;
+			if (userResize !== false) {
+				controller.userHeight = height;
+			}
 		}
 		if (controller.layout === LAYOUT_FULLSCREEN) {
 			controller.fullscreenHeight = height;
@@ -762,13 +819,13 @@
 	}
 
 	/**
-	 * Mirrors the textarea footprint for normal Markdown mode.
+	 * Mirrors the raw field footprint for normal viewer mode.
 	 *
-	 * @param {object} controller Markdown controller.
+	 * @param {object} controller Text viewer controller.
 	 * @param {boolean} captureHeight Whether to update the remembered normal height.
 	 * @returns {void}
 	 */
-	function syncMarkdownNormalSize(controller, captureHeight) {
+	function syncTextViewerNormalSize(controller, captureHeight) {
 		if (controller.layout !== LAYOUT_NORMAL) {
 			return;
 		}
@@ -794,12 +851,14 @@
 			'min-height': MIN_MARKDOWN_HEIGHT + 'px',
 			'margin-left': '',
 		});
-		controller.$editorViewer.css({
-			width: cssWidth,
-			height: height + 'px',
-			'min-height': MIN_MARKDOWN_HEIGHT + 'px',
-			'margin-left': '',
-		});
+		if (controller.$editorViewer && controller.$editorViewer.length) {
+			controller.$editorViewer.css({
+				width: cssWidth,
+				height: height + 'px',
+				'min-height': MIN_MARKDOWN_HEIGHT + 'px',
+				'margin-left': '',
+			});
+		}
 		controller.$rawPanel.css({
 			width: cssWidth,
 			height: height + 'px',
@@ -818,30 +877,30 @@
 	}
 
 	/**
-	 * Expands the Markdown preview to the full REDCap field row width.
+	 * Expands the active viewer panel to the full REDCap field row width.
 	 *
-	 * @param {object} controller Markdown controller.
+	 * @param {object} controller Text viewer controller.
 	 * @returns {void}
 	 */
-	function expandMarkdown(controller) {
+	function expandTextViewer(controller) {
 		if (!controller.canExpandToRowWidth) {
 			return;
 		}
-		if (controller.mode !== VIEW_RAW && controller.mode !== VIEW_MARKDOWN && controller.mode !== VIEW_HTML) {
-			setMarkdownMode(controller, VIEW_HTML);
+		if (!controller.isPanelMode()) {
+			controller.setMode(controller.defaultMode);
 		}
 		if (controller.layout !== LAYOUT_NORMAL) {
-			rememberMarkdownHeight(controller);
-			restoreMarkdownLayout(controller);
+			rememberTextViewerHeight(controller);
+			restoreTextViewerLayout(controller);
 		}
 
-		const $panel = getMarkdownActivePanel(controller);
-		const $target = getMarkdownExpandTarget(controller);
+		const $panel = controller.getActivePanel();
+		const $target = getTextViewerExpandTarget(controller);
 		const $expandedCell = createExpandedRow(controller);
 		const rowWidth = Math.max((controller.$row.length ? controller.$row.outerWidth() : $target.outerWidth()), $panel.outerWidth());
 		const currentHeight = $panel.outerHeight();
 		const expandedHeight = controller.userHeight || controller.expandedHeight || Math.max(currentHeight, Math.floor(rowWidth / 2));
-		captureMarkdownPlacement(controller);
+		captureTextViewerPlacement(controller);
 		$expandedCell.append(controller.$toolbar);
 		$expandedCell.append($panel);
 		hideDataCellContents(controller, $target);
@@ -858,26 +917,26 @@
 		controller.layout = LAYOUT_EXPANDED;
 		controller.$toolbar.addClass('rc-text-viewer-md-toolbar--expanded');
 		$panel.addClass('rc-text-viewer-md-preview--expanded');
-		updateMarkdownToolbar(controller);
+		controller.updateToolbar();
 	}
 
 	/**
-	 * Opens the Markdown preview in a fullscreen overlay.
+	 * Opens the active viewer panel in a fullscreen overlay.
 	 *
-	 * @param {object} controller Markdown controller.
+	 * @param {object} controller Text viewer controller.
 	 * @returns {void}
 	 */
-	function fullscreenMarkdown(controller) {
-		if (controller.mode !== VIEW_RAW && controller.mode !== VIEW_MARKDOWN && controller.mode !== VIEW_HTML) {
-			setMarkdownMode(controller, VIEW_HTML);
+	function fullscreenTextViewer(controller) {
+		if (!controller.isPanelMode()) {
+			controller.setMode(controller.defaultMode);
 		}
 		if (controller.layout !== LAYOUT_FULLSCREEN) {
-			rememberMarkdownHeight(controller);
+			rememberTextViewerHeight(controller);
 		}
 		if (controller.layout !== LAYOUT_FULLSCREEN) {
-			captureMarkdownPlacement(controller);
+			captureTextViewerPlacement(controller);
 		}
-		const $panel = getMarkdownActivePanel(controller);
+		const $panel = controller.getActivePanel();
 		controller.bodyOverflow = $('body').css('overflow');
 		$('body').css('overflow', 'hidden');
 		$('body').append(controller.$toolbar);
@@ -901,39 +960,31 @@
 		if (controller.editor) {
 			controller.editor.resize();
 		}
-		updateMarkdownToolbar(controller);
+		controller.updateToolbar();
 	}
 
 	/**
-	 * Collapses an expanded/fullscreen Markdown preview.
+	 * Collapses an expanded/fullscreen viewer panel.
 	 *
-	 * @param {object} controller Markdown controller.
+	 * @param {object} controller Text viewer controller.
 	 * @returns {void}
 	 */
-	function collapseMarkdown(controller) {
+	function collapseTextViewer(controller) {
 		if (controller.layout === LAYOUT_NORMAL) {
-			updateMarkdownToolbar(controller);
+			controller.updateToolbar();
 			return;
 		}
-		rememberMarkdownHeight(controller);
-		restoreMarkdownLayout(controller);
-		syncMarkdownNormalSize(controller, false);
-		if (controller.mode === VIEW_RAW) {
-			showRawMode(controller);
-		}
-		else if (controller.mode === VIEW_MARKDOWN) {
-			showMarkdownEditorMode(controller);
-		}
-		else {
-			showHtmlMode(controller);
-		}
-		updateMarkdownToolbar(controller);
+		rememberTextViewerHeight(controller);
+		restoreTextViewerLayout(controller);
+		controller.syncSize(false);
+		controller.restoreVisibleMode();
+		controller.updateToolbar();
 	}
 
 	/**
-	 * Creates or returns the dedicated expanded Markdown table row.
+	 * Creates or returns the dedicated expanded table row.
 	 *
-	 * @param {object} controller Markdown controller.
+	 * @param {object} controller Text viewer controller.
 	 * @returns {jQuery}
 	 */
 	function createExpandedRow(controller) {
@@ -955,12 +1006,12 @@
 	}
 
 	/**
-	 * Returns the container used for row-expanded Markdown mode.
+	 * Returns the container used for row-expanded mode.
 	 *
-	 * @param {object} controller Markdown controller.
+	 * @param {object} controller Text viewer controller.
 	 * @returns {jQuery}
 	 */
-	function getMarkdownExpandTarget(controller) {
+	function getTextViewerExpandTarget(controller) {
 		let $target = controller.$row.length ? controller.$row.find('td.data').last() : controller.$control.closest('td');
 		if (!$target.length && controller.$row.length) {
 			$target = controller.$row.find('td').last();
@@ -975,8 +1026,8 @@
 			|| (controller.$rawPanel && $target[0] === controller.$rawPanel[0])
 			|| $.contains(controller.$toolbar[0], $target[0])
 			|| $.contains(controller.$viewer[0], $target[0])
-			|| (controller.$editorViewer && $.contains(controller.$editorViewer[0], $target[0]))
-			|| (controller.$rawPanel && $.contains(controller.$rawPanel[0], $target[0]))
+			|| (controller.$editorViewer && controller.$editorViewer[0] && $.contains(controller.$editorViewer[0], $target[0]))
+			|| (controller.$rawPanel && controller.$rawPanel[0] && $.contains(controller.$rawPanel[0], $target[0]))
 		) {
 			$target = controller.$control.parent();
 		}
@@ -984,13 +1035,13 @@
 	}
 
 	/**
-	 * Restores moved Markdown toolbar and preview from expanded/fullscreen layouts.
+	 * Restores moved toolbar and active panel from expanded/fullscreen layouts.
 	 *
-	 * @param {object} controller Markdown controller.
+	 * @param {object} controller Text viewer controller.
 	 * @returns {void}
 	 */
-	function restoreMarkdownLayout(controller) {
-		restoreMarkdownPlacement(controller);
+	function restoreTextViewerLayout(controller) {
+		restoreTextViewerPlacement(controller);
 		restoreDataCellContents(controller);
 		if (controller.$expandedRow && controller.$expandedRow.length) {
 			controller.$expandedRow.remove();
@@ -998,7 +1049,7 @@
 		}
 		controller.layout = LAYOUT_NORMAL;
 		controller.$toolbar.removeClass('rc-text-viewer-md-toolbar--expanded rc-text-viewer-md-toolbar--fullscreen');
-		controller.$viewer.add(controller.$editorViewer).removeClass('rc-text-viewer-md-preview--expanded rc-text-viewer-md-preview--fullscreen');
+		controller.getPanelSet().removeClass('rc-text-viewer-md-preview--expanded rc-text-viewer-md-preview--fullscreen');
 		controller.$rawPanel.removeClass('rc-text-viewer-md-preview--expanded rc-text-viewer-md-preview--fullscreen');
 		if (controller.bodyOverflow !== null) {
 			$('body').css('overflow', controller.bodyOverflow);
@@ -1009,7 +1060,7 @@
 	/**
 	 * Temporarily hides original data-cell contents while row-expanded.
 	 *
-	 * @param {object} controller Markdown controller.
+	 * @param {object} controller Text viewer controller.
 	 * @param {jQuery} $dataCell Original REDCap data cell.
 	 * @returns {void}
 	 */
@@ -1035,7 +1086,7 @@
 	/**
 	 * Restores original data-cell contents after row-expanded mode.
 	 *
-	 * @param {object} controller Markdown controller.
+	 * @param {object} controller Text viewer controller.
 	 * @returns {void}
 	 */
 	function restoreDataCellContents(controller) {
@@ -1057,14 +1108,14 @@
 	/**
 	 * Captures the current preview DOM position.
 	 *
-	 * @param {object} controller Markdown controller.
+	 * @param {object} controller Text viewer controller.
 	 * @returns {void}
 	 */
-	function captureMarkdownPlacement(controller) {
+	function captureTextViewerPlacement(controller) {
 		if (controller.restoreParent) {
 			return;
 		}
-		const $panel = getMarkdownActivePanel(controller);
+		const $panel = controller.getActivePanel();
 		controller.$movedPanel = $panel;
 		controller.restoreParent = $panel.parent()[0];
 		controller.restoreNext = $panel[0].nextSibling;
@@ -1076,11 +1127,11 @@
 	 * @param {object} controller Markdown controller.
 	 * @returns {void}
 	 */
-	function restoreMarkdownPlacement(controller) {
+	function restoreTextViewerPlacement(controller) {
 		if (!controller.restoreParent) {
 			return;
 		}
-		const $panel = controller.$movedPanel || getMarkdownActivePanel(controller);
+		const $panel = controller.$movedPanel || controller.getActivePanel();
 		if (controller.restoreNext) {
 			controller.restoreParent.insertBefore($panel[0], controller.restoreNext);
 		}
@@ -1108,42 +1159,51 @@
 	}
 
 	/**
-	 * Expands the active Markdown panel to fit its content vertically.
+	 * Calculates the content height for the active Markdown panel.
 	 *
 	 * @param {object} controller Markdown controller.
-	 * @returns {void}
+	 * @returns {number}
 	 */
-	function expandMarkdownToContent(controller) {
-		let contentHeight = MIN_MARKDOWN_HEIGHT;
+	function getMarkdownContentHeight(controller) {
 		if (controller.mode === VIEW_RAW) {
 			const control = controller.$control[0];
-			contentHeight = control ? control.scrollHeight + controller.$rawResizeHandle.outerHeight() : contentHeight;
+			return control ? control.scrollHeight + controller.$rawResizeHandle.outerHeight() : MIN_MARKDOWN_HEIGHT;
 		}
-		else if (controller.mode === VIEW_MARKDOWN && controller.editor) {
+		if (controller.mode === VIEW_MARKDOWN && controller.editor) {
 			const lineHeight = controller.editor.renderer.lineHeight || 16;
-			contentHeight = (controller.editor.session.getScreenLength() * lineHeight) + 24;
+			return (controller.editor.session.getScreenLength() * lineHeight) + 24;
 		}
-		else if (controller.mode === VIEW_HTML) {
-			contentHeight = controller.$viewerContent.outerHeight(true) + controller.$resizeHandle.outerHeight() + 24;
+		if (controller.mode === VIEW_HTML) {
+			return controller.$viewerContent.outerHeight(true) + controller.$resizeHandle.outerHeight() + 24;
 		}
-		setMarkdownViewerHeight(controller, contentHeight);
+		return MIN_MARKDOWN_HEIGHT;
 	}
 
 	/**
-	 * Toggles the active Markdown panel between fit-content and its previous height.
+	 * Expands the active panel to fit its content vertically.
 	 *
-	 * @param {object} controller Markdown controller.
+	 * @param {object} controller Text viewer controller.
 	 * @returns {void}
 	 */
-	function toggleMarkdownContentHeight(controller) {
+	function expandTextViewerToContent(controller) {
+		controller.setHeight(controller.getContentHeight(), true);
+	}
+
+	/**
+	 * Toggles the active panel between fit-content and its previous height.
+	 *
+	 * @param {object} controller Text viewer controller.
+	 * @returns {void}
+	 */
+	function toggleTextViewerContentHeight(controller) {
 		if (controller.fitToContentActive) {
-			setMarkdownViewerHeight(controller, controller.fitToContentRestoreHeight || MIN_MARKDOWN_HEIGHT);
+			controller.setHeight(controller.fitToContentRestoreHeight || MIN_MARKDOWN_HEIGHT, true);
 			controller.fitToContentActive = false;
 			controller.fitToContentRestoreHeight = null;
 			return;
 		}
-		controller.fitToContentRestoreHeight = Math.max(getMarkdownActivePanel(controller).outerHeight() || MIN_MARKDOWN_HEIGHT, MIN_MARKDOWN_HEIGHT);
-		expandMarkdownToContent(controller);
+		controller.fitToContentRestoreHeight = Math.max(controller.getActivePanel().outerHeight() || MIN_MARKDOWN_HEIGHT, MIN_MARKDOWN_HEIGHT);
+		expandTextViewerToContent(controller);
 		controller.fitToContentActive = true;
 	}
 
@@ -1235,7 +1295,6 @@
 		const initialHeight = Number.isInteger(jsonConfig.height) && jsonConfig.height > 0
 			? Math.max(jsonConfig.height, MIN_MARKDOWN_HEIGHT)
 			: null;
-		const $expandLink = $('#' + escapeSelector(fieldName) + '-expand');
 		const editorId = `rc-text-viewer-ace-${fieldName}`;
 		const $toolbar = $('<div/>', {
 			class: 'rc-text-viewer-md-toolbar rc-text-viewer-json-toolbar d-print-none',
@@ -1288,50 +1347,47 @@
 			title: 'Drag to resize',
 		});
 		const canExpandRaw = $control.is('textarea');
-		const controller = {
-			fieldName: fieldName,
+		const controller = createTextViewerController({
+			viewerType: 'json',
+			field: field,
 			$control: $control,
-			$row: $(`tr[sq_id="${escapeSelector(fieldName)}"]`).first(),
-			$expandLink: $expandLink,
 			$toolbar: $toolbar,
 			$viewer: $viewer,
 			$editor: $editor,
 			$rawPanel: $rawPanel,
 			$resizeHandle: $resizeHandle,
 			$rawResizeHandle: $rawResizeHandle,
-			$status: $status,
 			$actions: $actions,
 			$expandButton: $expandButton,
 			$fullscreenButton: $fullscreenButton,
 			$collapseButton: $collapseButton,
-			editor: null,
+			initialHeight: initialHeight,
+		});
+		$.extend(controller, {
+			$status: $status,
 			jsonOnly: jsonOnly,
 			displayFormat: displayFormat,
 			storageFormat: storageFormat,
-			rowConfig: field.rowConfig === 'full' ? 'full' : 'split',
-			canExpandToRowWidth: field.rowConfig === 'split',
-			canExpandRaw: canExpandRaw,
 			mode: jsonConfig.initialMode === VIEW_JSON ? VIEW_JSON : VIEW_RAW,
-			layout: LAYOUT_NORMAL,
-			height: initialHeight || $control.outerHeight() || MIN_MARKDOWN_HEIGHT,
-			width: $control.outerWidth(),
-			expandedHeight: null,
-			fullscreenHeight: null,
-			userHeight: initialHeight,
-			fitToContentActive: false,
-			fitToContentRestoreHeight: null,
-			restoreParent: null,
-			restoreNext: null,
-			$dataCell: null,
-			$expandedRow: null,
-			bodyOverflow: null,
+			getActivePanel: function () { return getJsonActivePanel(controller); },
+			getPanelSet: function () { return controller.$viewer.add(controller.$rawPanel); },
+			getContentHeight: function () { return getJsonContentHeight(controller); },
+			setHeight: function (height, userResize) { setTextViewerHeight(controller, height, userResize !== false); },
+			syncSize: function (captureHeight) { syncTextViewerNormalSize(controller, captureHeight); },
+			restoreVisibleMode: function () { restoreJsonVisibleMode(controller); },
+			setMode: function (mode) { setJsonMode(controller, mode); },
+			updateToolbar: function () { updateJsonToolbar(controller); },
+			isPanelMode: function () { return controller.mode === VIEW_JSON || (controller.mode === VIEW_RAW && controller.canExpandRaw); },
+			modeAttribute: 'data-rc-json-mode',
+			layoutAttribute: 'data-rc-json-layout',
+			defaultMode: VIEW_JSON,
 			updatingEditor: false,
 			updatingControl: false,
 			skipNextControlRender: false,
-		};
+		});
 
 		if (field.readonly) {
-			applyMarkdownReadonly($control, $control.closest('tr'));
+			applyReadonlyState($control, controller.$row);
 		}
 
 		if (jsonOnly) {
@@ -1362,9 +1418,9 @@
 				setJsonMode(controller, mode);
 			}
 		});
-		$toolbar.on('click', '[data-rc-md-action]', function (ev) {
+		$toolbar.on('click', '[data-rc-text-viewer-action]', function (ev) {
 			ev.preventDefault();
-			handleJsonAction(controller, $(this).attr('data-rc-md-action'));
+			handleTextViewerAction(controller, $(this).attr('data-rc-text-viewer-action'));
 		});
 		$control.on('input change keyup', debounce(function () {
 			if (controller.skipNextControlRender) {
@@ -1396,7 +1452,7 @@
 				normalizeJsonEditor(controller);
 			});
 			renderJsonFromControl(controller);
-			syncJsonSize(controller);
+			syncTextViewerNormalSize(controller);
 			editor.resize();
 		}).catch(function (e) {
 			const formatted = formatJson($control.val() || '', controller.displayFormat);
@@ -1405,7 +1461,7 @@
 			LOGGER.warn('Ace failed to load', e);
 		});
 
-		initJsonResizeHandle(controller);
+		initTextViewerResizeHandles(controller);
 		setJsonMode(controller, controller.mode);
 		return controller;
 	}
@@ -1428,20 +1484,20 @@
 		const previousMode = controller.mode;
 		const previousLayout = controller.layout;
 		if (previousMode !== mode && previousLayout !== LAYOUT_NORMAL) {
-			rememberJsonHeight(controller);
-			restoreJsonLayout(controller);
+			rememberTextViewerHeight(controller);
+			restoreTextViewerLayout(controller);
 		}
 		controller.mode = mode;
 		if (mode === VIEW_RAW) {
 			normalizeJsonEditor(controller);
-			syncJsonSize(controller);
+			syncTextViewerNormalSize(controller, true);
 			controller.$control.show();
 			controller.$rawPanel.css('display', controller.canExpandRaw ? 'flex' : 'none');
 			controller.$expandLink.hide();
 			controller.$viewer.css('display', 'none');
 		}
 		else {
-			syncJsonSize(controller);
+			syncTextViewerNormalSize(controller, true);
 			controller.$control.hide();
 			controller.$rawPanel.css('display', 'none');
 			controller.$expandLink.hide();
@@ -1452,29 +1508,10 @@
 		}
 		updateJsonToolbar(controller);
 		if (previousMode !== mode && previousLayout === LAYOUT_EXPANDED) {
-			expandJson(controller);
+			expandTextViewer(controller);
 		}
 		if (previousMode !== mode && previousLayout === LAYOUT_FULLSCREEN) {
-			fullscreenJson(controller);
-		}
-	}
-
-	/**
-	 * Handles JSON action buttons.
-	 *
-	 * @param {object} controller JSON controller.
-	 * @param {string} action Action identifier.
-	 * @returns {void}
-	 */
-	function handleJsonAction(controller, action) {
-		if (action === 'expand') {
-			expandJson(controller);
-		}
-		if (action === 'fullscreen') {
-			fullscreenJson(controller);
-		}
-		if (action === 'collapse') {
-			collapseJson(controller);
+			fullscreenTextViewer(controller);
 		}
 	}
 
@@ -1485,286 +1522,7 @@
 	 * @returns {void}
 	 */
 	function updateJsonToolbar(controller) {
-		const isJson = controller.mode === VIEW_JSON;
-		const isPanelMode = isJson || (controller.mode === VIEW_RAW && controller.canExpandRaw);
-		controller.$toolbar.find('[data-rc-json-mode]').each(function () {
-			const $tab = $(this);
-			const active = $tab.attr('data-rc-json-mode') === controller.mode;
-			$tab.toggleClass('active', active);
-			$tab.attr('aria-current', active ? 'true' : 'false');
-		});
-		controller.$actions[isPanelMode ? 'show' : 'hide']();
-		controller.$expandButton[isPanelMode && controller.canExpandToRowWidth && controller.layout !== LAYOUT_EXPANDED ? 'show' : 'hide']();
-		controller.$fullscreenButton[isPanelMode && controller.layout !== LAYOUT_FULLSCREEN ? 'show' : 'hide']();
-		controller.$collapseButton[isPanelMode && (controller.layout === LAYOUT_FULLSCREEN || controller.layout === LAYOUT_EXPANDED) ? 'show' : 'hide']();
-		controller.$toolbar
-			.attr('data-rc-json-layout', controller.layout)
-			.toggleClass('rc-text-viewer-md-toolbar--markdown', isPanelMode);
-	}
-
-	/**
-	 * Mirrors the raw control footprint for normal JSON mode.
-	 *
-	 * @param {object} controller JSON controller.
-	 * @returns {void}
-	 */
-	function syncJsonSize(controller) {
-		if (controller.layout !== LAYOUT_NORMAL) {
-			return;
-		}
-		const measuredWidth = controller.$control.is(':visible') ? controller.$control.outerWidth() : 0;
-		const width = measuredWidth || controller.width || controller.$control.parent().width() || 200;
-		const cssWidth = controller.$control.is('textarea') && controller.rowConfig === 'full' ? '100%' : width + 'px';
-		if (measuredWidth) {
-			controller.width = measuredWidth;
-		}
-		controller.$toolbar.css('width', cssWidth);
-		controller.$viewer.css({
-			width: cssWidth,
-			height: Math.max(controller.height, MIN_MARKDOWN_HEIGHT) + 'px',
-			'min-height': MIN_MARKDOWN_HEIGHT + 'px',
-			'margin-left': '',
-		});
-		controller.$rawPanel.css({
-			width: cssWidth,
-			height: Math.max(controller.height, MIN_MARKDOWN_HEIGHT) + 'px',
-			'min-height': MIN_MARKDOWN_HEIGHT + 'px',
-			'margin-left': '',
-		});
-		controller.$editor.css({
-			'min-height': '',
-		});
-		if (controller.editor) {
-			controller.editor.resize();
-		}
-	}
-
-	/**
-	 * Updates Ace height for the active JSON layout.
-	 *
-	 * @param {object} controller JSON controller.
-	 * @param {number} height Viewer height in pixels.
-	 * @returns {void}
-	 */
-	function setJsonViewerHeight(controller, height, userResize) {
-		height = Math.max(MIN_MARKDOWN_HEIGHT, Math.floor(height));
-		controller.$viewer.add(controller.$rawPanel).css({
-			height: height + 'px',
-			'min-height': MIN_MARKDOWN_HEIGHT + 'px',
-		});
-		controller.$control.css('min-height', '');
-		controller.$editor.css({
-			'min-height': '',
-		});
-		if (controller.layout === LAYOUT_NORMAL) {
-			controller.height = height;
-			controller.expandedHeight = height;
-			if (userResize) {
-				controller.userHeight = height;
-			}
-		}
-		if (controller.layout === LAYOUT_EXPANDED) {
-			controller.expandedHeight = height;
-			if (userResize) {
-				controller.height = height;
-				controller.userHeight = height;
-			}
-		}
-		if (controller.layout === LAYOUT_FULLSCREEN) {
-			controller.fullscreenHeight = height;
-		}
-		if (controller.editor) {
-			controller.editor.resize();
-		}
-	}
-
-	/**
-	 * Stores current JSON viewer height for the active layout.
-	 *
-	 * @param {object} controller JSON controller.
-	 * @returns {void}
-	 */
-	function rememberJsonHeight(controller) {
-		const height = getJsonActivePanel(controller).outerHeight();
-		if (!height) {
-			return;
-		}
-		if (controller.layout === LAYOUT_NORMAL) {
-			controller.height = height;
-		}
-		if (controller.layout === LAYOUT_EXPANDED) {
-			controller.expandedHeight = height;
-		}
-		if (controller.layout === LAYOUT_FULLSCREEN) {
-			controller.fullscreenHeight = height;
-		}
-	}
-
-	/**
-	 * Initializes the full-width JSON resize handle.
-	 *
-	 * @param {object} controller JSON controller.
-	 * @returns {void}
-	 */
-	function initJsonResizeHandle(controller) {
-		controller.$resizeHandle.add(controller.$rawResizeHandle).on('mousedown', function (ev) {
-			if (controller.layout === LAYOUT_FULLSCREEN) {
-				return;
-			}
-			ev.preventDefault();
-			const startY = ev.pageY;
-			const startHeight = getJsonActivePanel(controller).outerHeight();
-			let resized = false;
-
-			$(document).on('mousemove.rcTextViewerJsonResize', function (moveEv) {
-				if (!resized) {
-					controller.fitToContentActive = false;
-					controller.fitToContentRestoreHeight = null;
-					resized = true;
-				}
-				const nextHeight = Math.max(MIN_MARKDOWN_HEIGHT, startHeight + (moveEv.pageY - startY));
-				setJsonViewerHeight(controller, nextHeight, true);
-			});
-			$(document).on('mouseup.rcTextViewerJsonResize', function () {
-				$(document).off('.rcTextViewerJsonResize');
-			});
-		}).on('dblclick', function (ev) {
-			ev.preventDefault();
-			toggleJsonContentHeight(controller);
-		});
-	}
-
-	/**
-	 * Expands the JSON editor to the full REDCap field row width.
-	 *
-	 * @param {object} controller JSON controller.
-	 * @returns {void}
-	 */
-	function expandJson(controller) {
-		if (!controller.canExpandToRowWidth) {
-			return;
-		}
-		if (controller.mode !== VIEW_RAW && controller.mode !== VIEW_JSON) {
-			setJsonMode(controller, VIEW_JSON);
-		}
-		if (controller.layout !== LAYOUT_NORMAL) {
-			rememberJsonHeight(controller);
-			restoreJsonLayout(controller);
-		}
-
-		const $panel = getJsonActivePanel(controller);
-		const $target = getMarkdownExpandTarget(controller);
-		const $expandedCell = createExpandedRow(controller);
-		const rowWidth = Math.max((controller.$row.length ? controller.$row.outerWidth() : $target.outerWidth()), $panel.outerWidth());
-		const currentHeight = $panel.outerHeight() || controller.height;
-		const expandedHeight = controller.userHeight || controller.expandedHeight || Math.max(currentHeight, Math.floor(rowWidth / 2));
-		captureMarkdownPlacement(controller);
-		$expandedCell.append(controller.$toolbar);
-		$expandedCell.append($panel);
-		hideDataCellContents(controller, $target);
-		controller.$toolbar.css({
-			width: '100%',
-			'margin-left': '',
-		});
-		$panel.css({
-			width: '100%',
-			'margin-left': '',
-		});
-		controller.layout = LAYOUT_EXPANDED;
-		controller.$toolbar.addClass('rc-text-viewer-md-toolbar--expanded');
-		$panel.addClass('rc-text-viewer-md-preview--expanded');
-		setJsonViewerHeight(controller, expandedHeight, false);
-		updateJsonToolbar(controller);
-	}
-
-	/**
-	 * Opens the JSON editor in a fullscreen overlay.
-	 *
-	 * @param {object} controller JSON controller.
-	 * @returns {void}
-	 */
-	function fullscreenJson(controller) {
-		if (controller.mode !== VIEW_RAW && controller.mode !== VIEW_JSON) {
-			setJsonMode(controller, VIEW_JSON);
-		}
-		if (controller.layout !== LAYOUT_FULLSCREEN) {
-			rememberJsonHeight(controller);
-			captureMarkdownPlacement(controller);
-		}
-		const $panel = getJsonActivePanel(controller);
-		controller.bodyOverflow = $('body').css('overflow');
-		$('body').css('overflow', 'hidden');
-		$('body').append(controller.$toolbar);
-		$('body').append($panel);
-		const fullscreenHeight = controller.fullscreenHeight || Math.max($panel.outerHeight() || controller.height, $(global).height() - 64);
-		controller.$toolbar.css({
-			width: '',
-			'margin-left': '',
-		});
-		$panel.css({
-			width: '',
-			'margin-left': '',
-		});
-		controller.layout = LAYOUT_FULLSCREEN;
-		controller.$toolbar.removeClass('rc-text-viewer-md-toolbar--expanded');
-		controller.$toolbar.addClass('rc-text-viewer-md-toolbar--fullscreen');
-		$panel.removeClass('rc-text-viewer-md-preview--expanded');
-		$panel.addClass('rc-text-viewer-md-preview--fullscreen');
-		setJsonViewerHeight(controller, fullscreenHeight, false);
-		updateJsonToolbar(controller);
-	}
-
-	/**
-	 * Collapses an expanded/fullscreen JSON editor.
-	 *
-	 * @param {object} controller JSON controller.
-	 * @returns {void}
-	 */
-	function collapseJson(controller) {
-		if (controller.layout === LAYOUT_NORMAL) {
-			updateJsonToolbar(controller);
-			return;
-		}
-		rememberJsonHeight(controller);
-		restoreJsonLayout(controller);
-		syncJsonSize(controller);
-		if (controller.mode === VIEW_RAW) {
-			controller.$control.show();
-			controller.$rawPanel.css('display', controller.canExpandRaw ? 'flex' : 'none');
-			controller.$viewer.css('display', 'none');
-		}
-		else {
-			controller.$control.hide();
-			controller.$rawPanel.css('display', 'none');
-			controller.$viewer.css('display', 'flex');
-		}
-		if (controller.mode === VIEW_JSON && controller.editor) {
-			controller.editor.resize();
-		}
-		updateJsonToolbar(controller);
-	}
-
-	/**
-	 * Restores moved JSON toolbar and editor from expanded/fullscreen layouts.
-	 *
-	 * @param {object} controller JSON controller.
-	 * @returns {void}
-	 */
-	function restoreJsonLayout(controller) {
-		restoreMarkdownPlacement(controller);
-		restoreDataCellContents(controller);
-		if (controller.$expandedRow && controller.$expandedRow.length) {
-			controller.$expandedRow.remove();
-			controller.$expandedRow = null;
-		}
-		controller.layout = LAYOUT_NORMAL;
-		controller.$toolbar.removeClass('rc-text-viewer-md-toolbar--expanded rc-text-viewer-md-toolbar--fullscreen');
-		controller.$viewer.removeClass('rc-text-viewer-md-preview--expanded rc-text-viewer-md-preview--fullscreen');
-		controller.$rawPanel.removeClass('rc-text-viewer-md-preview--expanded rc-text-viewer-md-preview--fullscreen');
-		if (controller.bodyOverflow !== null) {
-			$('body').css('overflow', controller.bodyOverflow);
-			controller.bodyOverflow = null;
-		}
+		updateTextViewerToolbar(controller);
 	}
 
 	/**
@@ -1778,40 +1536,42 @@
 	}
 
 	/**
-	 * Expands the active JSON panel to fit its content vertically.
+	 * Restores the visible panel for the current JSON mode.
 	 *
 	 * @param {object} controller JSON controller.
 	 * @returns {void}
 	 */
-	function expandJsonToContent(controller) {
-		let contentHeight = MIN_MARKDOWN_HEIGHT;
-		if (controller.mode === VIEW_RAW && controller.canExpandRaw) {
-			const control = controller.$control[0];
-			contentHeight = control ? control.scrollHeight + controller.$rawResizeHandle.outerHeight() : contentHeight;
+	function restoreJsonVisibleMode(controller) {
+		if (controller.mode === VIEW_RAW) {
+			controller.$control.show();
+			controller.$rawPanel.css('display', controller.canExpandRaw ? 'flex' : 'none');
+			controller.$viewer.css('display', 'none');
+			return;
 		}
-		else if (controller.editor) {
-			const lineHeight = controller.editor.renderer.lineHeight || 16;
-			contentHeight = (controller.editor.session.getScreenLength() * lineHeight) + 24;
+		controller.$control.hide();
+		controller.$rawPanel.css('display', 'none');
+		controller.$viewer.css('display', 'flex');
+		if (controller.editor) {
+			controller.editor.resize();
 		}
-		setJsonViewerHeight(controller, contentHeight, true);
 	}
 
 	/**
-	 * Toggles the active JSON panel between fit-content and its previous height.
+	 * Calculates the content height for the active JSON panel.
 	 *
 	 * @param {object} controller JSON controller.
-	 * @returns {void}
+	 * @returns {number}
 	 */
-	function toggleJsonContentHeight(controller) {
-		if (controller.fitToContentActive) {
-			setJsonViewerHeight(controller, controller.fitToContentRestoreHeight || MIN_MARKDOWN_HEIGHT, true);
-			controller.fitToContentActive = false;
-			controller.fitToContentRestoreHeight = null;
-			return;
+	function getJsonContentHeight(controller) {
+		if (controller.mode === VIEW_RAW && controller.canExpandRaw) {
+			const control = controller.$control[0];
+			return control ? control.scrollHeight + controller.$rawResizeHandle.outerHeight() : MIN_MARKDOWN_HEIGHT;
 		}
-		controller.fitToContentRestoreHeight = Math.max(getJsonActivePanel(controller).outerHeight() || MIN_MARKDOWN_HEIGHT, MIN_MARKDOWN_HEIGHT);
-		expandJsonToContent(controller);
-		controller.fitToContentActive = true;
+		if (controller.editor) {
+			const lineHeight = controller.editor.renderer.lineHeight || 16;
+			return (controller.editor.session.getScreenLength() * lineHeight) + 24;
+		}
+		return MIN_MARKDOWN_HEIGHT;
 	}
 
 	/**
