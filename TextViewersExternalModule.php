@@ -67,9 +67,10 @@ class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
 	 * @param int|null    $repeat_instance Current repeat instance.
 	 * @return void
 	 */
-	function redcap_data_entry_form($project_id, $record, $instrument, $event_id, $group_id, $repeat_instance)
+	function redcap_data_entry_form_top($project_id, $record, $instrument, $event_id, $group_id, $repeat_instance)
 	{
-		$this->injectViewers($project_id, $record, $instrument, $event_id, $repeat_instance);
+		$Proj = $GLOBALS['Proj'];
+		$this->injectViewers($Proj, $record, $instrument, $event_id, $repeat_instance, false);
 	}
 
 	/**
@@ -85,9 +86,10 @@ class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
 	 * @param int|null    $repeat_instance Current repeat instance.
 	 * @return void
 	 */
-	function redcap_survey_page($project_id, $record, $instrument, $event_id, $group_id, $survey_hash, $response_id, $repeat_instance)
+	function redcap_survey_page_top($project_id, $record, $instrument, $event_id, $group_id, $survey_hash, $response_id, $repeat_instance)
 	{
-		$this->injectViewers($project_id, $record, $instrument, $event_id, $repeat_instance);
+		$Proj = $GLOBALS['Proj'];
+		$this->injectViewers($Proj, $record, $instrument, $event_id, $repeat_instance, true);
 	}
 
 	#endregion
@@ -95,25 +97,35 @@ class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
 	/**
 	 * Finds tagged fields and injects all required CSS/JS for the current page.
 	 *
-	 * @param int         $project_id      REDCap project id.
+	 * @param \Project    $Proj            REDCap project.
 	 * @param string|null $record          Current record id.
 	 * @param string      $instrument      Current instrument name.
 	 * @param int|null    $event_id        Current event id.
 	 * @param int|null    $repeat_instance Current repeat instance.
+	 * @param bool        $is_survey       Whether the current page is a survey page.
 	 * @return void
 	 */
-	private function injectViewers($project_id, $record, $instrument, $event_id, $repeat_instance)
+	private function injectViewers($Proj, $record, $instrument, $event_id, $repeat_instance, $is_survey)
 	{
-		$viewer_fields = $this->getViewerFields($project_id, $record, $instrument, $event_id, $repeat_instance);
+		$viewer_fields = $this->getViewerFields($Proj, $record, $instrument, $event_id, $repeat_instance, $is_survey);
 		if (empty($viewer_fields)) {
 			return;
 		}
+		$this->removeREDCapReadonly($Proj, $viewer_fields);
 
 		$this->js_debug = $this->getProjectSetting('javascript-debug') == '1';
 
 		$inject = InjectionHelper::init($this);
 		$has_markdown = $this->hasViewerType($viewer_fields, 'markdown');
-		$config = $this->getClientConfig($viewer_fields);
+		// Build client config
+		$config = array(
+			'debug' => $this->js_debug,
+			'isSurvey' => $is_survey,
+			'fields' => $viewer_fields,
+			'urls' => array(
+				'ace' => $this->getRedcapResourceUrl('Resources/js/Libraries/ace.js'),
+			),
+		);
 		$config_json = json_encode($config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
 
 		$inject->css('css/rc-viewers.css');
@@ -133,68 +145,93 @@ class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
 		<?php
 	}
 
+
+	/**
+	 * Removes readonly action tags from viewer fields to allow client-side viewers to control readonly state.
+	 * @param \Project $Proj 
+	 * @param array $viewer_fields 
+	 * @return void 
+	 */
+	private function removeREDCapReadonly($Proj, $viewer_fields) {
+		// Remove readonly action tags from viewer fields
+		$metadata_name = \Design::isDraftPreview($Proj->project_id) ? 'metadata_temp' : 'metadata';
+		$metadata = &$Proj->$metadata_name;
+		foreach ($viewer_fields as $vf) {
+			if ($vf['readonly']) {
+				$fieldName = $vf['name'];
+				foreach (['@READONLY', '@READONLY-FORM', '@READONLY-SURVEY'] as $readonlyTag) {
+					$misc = $metadata[$fieldName]['misc'] ?? '';
+					$metadata[$fieldName]['misc'] = str_replace($readonlyTag, ' ', $misc);
+				}
+			}
+		}
+	}
+
 	/**
 	 * Builds viewer definitions from the configured action tags.
 	 *
-	 * @param int         $project_id      REDCap project id.
+	 * @param \Project    $Proj            REDCap project.
 	 * @param string|null $record          Current record id.
 	 * @param string      $instrument      Current instrument name.
 	 * @param int|null    $event_id        Current event id.
 	 * @param int|null    $repeat_instance Current repeat instance.
+	 * @param bool        $is_survey       Whether the current page is a survey page.
 	 * @return array
 	 */
-	private function getViewerFields($project_id, $record, $instrument, $event_id, $repeat_instance)
+	private function getViewerFields($Proj, $record, $instrument, $event_id, $repeat_instance, $is_survey)
 	{
-		$context = array(
-			'project_id' => $project_id,
+		$context = [
+			'project_id' => $Proj->project_id,
 			'record' => $record,
 			'instrument' => $instrument,
 			'event_id' => $event_id,
 			'instance' => $repeat_instance ?: 1,
-		);
-		$tags = array(self::AT_JSON_VIEWER, self::AT_MARKDOWN_VIEWER);
-		$action_tags = ActionTagHelper::getActionTags($tags, null, $instrument, $context);
-		$metadata_by_field = $this->getMetadataByField($instrument, $context);
-		$is_survey_page = $this->isSurveyPage();
-		$viewer_fields = array();
+		];
+		$tags = [
+			self::AT_JSON_VIEWER, 
+			self::AT_MARKDOWN_VIEWER,
+			'@READONLY',
+			'@READONLY-FORM',
+			'@READONLY-SURVEY',
+		];
+		$actionTags = ActionTagHelper::getActionTags($tags, null, $instrument, $context);
+		$viewerFields = [];
+		$metadata = $Proj->getMetadata();
 
-		foreach ($action_tags as $action_tag => $fields) {
-			foreach ($fields as $field_name => $tag_info) {
-				if (!isset($metadata_by_field[$field_name])) {
-					continue;
-				}
-				$metadata = $metadata_by_field[$field_name];
-				$field_annotation = $metadata['field_annotation'] ?? '';
-				$field_type = $metadata['field_type'] ?? '';
-				if (!isset($viewer_fields[$field_name])) {
-					$viewer_fields[$field_name] = array(
-						'name' => $field_name,
-						'viewers' => array(),
-						'readonly' => \Form::disableFieldViaActionTag($field_annotation, $is_survey_page),
-						'rowConfig' => in_array($metadata['custom_alignment'], ['LH', 'LV']) ? 'full' : 'split',
-					);
-				}
-				if ($action_tag === self::AT_JSON_VIEWER) {
-					$viewer_fields[$field_name]['viewers'][] = 'json';
-				}
-				if ($action_tag === self::AT_MARKDOWN_VIEWER) {
-					if ($field_type !== 'notes') {
-						continue;
-					}
-					$viewer_fields[$field_name]['viewers'][] = 'markdown';
-					$markdown_params = $this->parseMarkdownViewerParams($tag_info['params'] ?? '');
-					$viewer_fields[$field_name]['markdown'] = array(
-						'initialMode' => $markdown_params['initialMode'],
-						'mdOnly' => $markdown_params['mdOnly'],
-					);
-				}
+		$is_readonly = function($fieldName) use ($actionTags, $is_survey) {
+			if (isset($actionTags['@READONLY'][$fieldName])) return true;
+			if (isset($actionTags['@READONLY-FORM'][$fieldName]) && !$is_survey) return true;
+			if (isset($actionTags['@READONLY-SURVEY'][$fieldName]) && $is_survey) return true;
+			return false;
+		};
+
+		foreach ($actionTags[self::AT_MARKDOWN_VIEWER] ?? [] as $fieldName => $tagInfo) {
+			$fieldMetadata = $metadata[$fieldName] ?? null;
+			if (empty($fieldMetadata) || ($fieldMetadata['element_type'] ?? '') !== 'textarea') continue;
+			$viewerFields[$fieldName] = [
+				'name' => $fieldName,
+				'viewers' => ['markdown'],
+				'readonly' => $is_readonly($fieldName),
+				'rowConfig' => in_array($fieldMetadata['custom_alignment'] ?? '', ['LH', 'LV']) ? 'full' : 'split',
+				'markdown' => $this->parseMarkdownViewerParams($tagInfo['params'] ?? ''),
+			];
+		}
+		foreach ($actionTags[self::AT_JSON_VIEWER] ?? [] as $fieldName => $tagInfo) {
+			$fieldMetadata = $metadata[$fieldName] ?? null;
+			if (empty($fieldMetadata)) continue;
+			if (!isset($viewerFields[$fieldName])) {
+				$viewerFields[$fieldName] = [
+					'name' => $fieldName,
+					'viewers' => ['json'],
+					'readonly' => $is_readonly($fieldName),
+					'rowConfig' => in_array($fieldMetadata['custom_alignment'] ?? '', ['LH', 'LV']) ? 'full' : 'split',
+				];
+			} else {
+				$viewerFields[$fieldName]['viewers'][] = 'json';
 			}
 		}
 
-		$viewer_fields = array_filter($viewer_fields, function ($field) {
-			return !empty($field['viewers']);
-		});
-		return array_values($viewer_fields);
+		return array_values($viewerFields);
 	}
 
 	/**
@@ -298,23 +335,6 @@ class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
 		return false;
 	}
 
-	/**
-	 * Builds the JSON-serializable client configuration.
-	 *
-	 * @param array $viewer_fields Viewer field definitions.
-	 * @return array
-	 */
-	private function getClientConfig($viewer_fields)
-	{
-		$config = array(
-			'debug' => $this->js_debug,
-			'fields' => $viewer_fields,
-			'urls' => array(
-				'ace' => $this->getRedcapResourceUrl('Resources/js/Libraries/ace.js'),
-			),
-		);
-		return $config;
-	}
 
 	/**
 	 * Returns a URL for a REDCap core resource.

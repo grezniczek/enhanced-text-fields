@@ -252,7 +252,6 @@
 	 * @returns {void}
 	 */
 	function applyMarkdownReadonly($control, $row) {
-		$row.removeClass('@READONLY @READONLY-FORM @READONLY-SURVEY');
 		$row.addClass('rc-text-viewer-readonly-row');
 		$control.prop('disabled', false);
 		$control.prop('readonly', true);
