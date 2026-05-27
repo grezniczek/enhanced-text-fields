@@ -86,7 +86,29 @@
 	align-items: center;
 	color: #4b5563;
 	display: inline-flex;
+	height: 14px;
 	min-width: 14px;
+	position: relative;
+	width: 14px;
+}
+
+.rc-text-viewer-edit-state__pencil,
+.rc-text-viewer-edit-state__slash {
+	left: 0;
+	position: absolute;
+	top: 0;
+}
+
+.rc-text-viewer-edit-state__slash {
+	color: transparent;
+}
+
+.rc-text-viewer-edit-state--readonly .rc-text-viewer-edit-state__pencil {
+	color: #b00020;
+}
+
+.rc-text-viewer-edit-state--readonly .rc-text-viewer-edit-state__slash {
+	color: #6b7280;
 }
 
 .rc-text-viewer__fallback {
@@ -233,6 +255,28 @@ tr[sq_id]:has(td.data) .rc-text-viewer-md-toolbar {
 	padding: 0;
 	position: relative;
 	resize: none;
+}
+
+.rc-text-viewer-raw-panel {
+	background: transparent;
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+	margin-bottom: 8px;
+	max-width: 100%;
+	min-width: 0;
+	overflow: hidden;
+	padding: 0;
+	position: relative;
+	resize: none;
+}
+
+.rc-text-viewer-raw-panel textarea {
+	box-sizing: border-box;
+	flex: 1 1 auto;
+	height: auto !important;
+	min-height: 0;
+	width: 100%;
 }
 
 .rc-text-viewer-md-editor .rc-text-viewer__ace {

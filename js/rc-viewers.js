@@ -115,6 +115,23 @@
 	}
 
 	/**
+	 * Creates the shared editable/readonly state indicator.
+	 *
+	 * @param {boolean} readonly Whether the field is readonly.
+	 * @returns {jQuery}
+	 */
+	function createEditStateIndicator(readonly) {
+		return $('<span/>', {
+			class: 'rc-text-viewer-edit-state' + (readonly ? ' rc-text-viewer-edit-state--readonly' : ''),
+			title: readonly ? 'Readonly' : 'Editable',
+			'aria-label': readonly ? 'Readonly' : 'Editable',
+		}).append(
+			$('<i/>', { class: 'fa-solid fa-pencil rc-text-viewer-edit-state__pencil', 'aria-hidden': 'true' }),
+			$('<i/>', { class: 'fa-solid fa-slash rc-text-viewer-edit-state__slash', 'aria-hidden': 'true' })
+		);
+	}
+
+	/**
 	 * Creates the viewer shell next to a REDCap field control.
 	 *
 	 * @param {jQuery} $control Field input or textarea.
@@ -284,6 +301,7 @@
 			'data-rc-text-viewer-field': fieldName,
 		});
 		const $tabs = $('<span/>', { class: 'rc-text-viewer-md-tabs' });
+		const $editability = createEditStateIndicator(!!field.readonly);
 		const $rawTab = $('<a/>', {
 			href: 'javascript:;',
 			class: 'rc-text-viewer-md-tab',
@@ -334,6 +352,16 @@
 			'aria-orientation': 'horizontal',
 			title: 'Drag to resize',
 		});
+		const $rawPanel = $('<div/>', {
+			class: 'rc-text-viewer-raw-panel',
+			'data-rc-text-viewer-field': fieldName,
+		});
+		const $rawResizeHandle = $('<div/>', {
+			class: 'rc-text-viewer-md-resize-handle',
+			role: 'separator',
+			'aria-orientation': 'horizontal',
+			title: 'Drag to resize',
+		});
 		const controller = {
 			fieldName: fieldName,
 			$control: $control,
@@ -345,13 +373,16 @@
 			$viewerContent: $viewerContent,
 			$editorViewer: $editorViewer,
 			$editor: $editor,
+			$rawPanel: $rawPanel,
 			$resizeHandle: $resizeHandle,
 			$editorResizeHandle: $editorResizeHandle,
+			$rawResizeHandle: $rawResizeHandle,
 			$actions: $actions,
 			$expandButton: $expandButton,
 			$fullscreenButton: $fullscreenButton,
 			$collapseButton: $collapseButton,
 			canExpandToRowWidth: canExpandToRowWidth,
+			canExpandRaw: $control.is('textarea'),
 			mdOnly: mdOnly,
 			editor: null,
 			mode: markdownConfig.initialMode === VIEW_HTML ? VIEW_HTML : (markdownConfig.initialMode === VIEW_MARKDOWN ? VIEW_MARKDOWN : VIEW_RAW),
@@ -375,10 +406,11 @@
 
 		if (mdOnly) {
 			controller.mode = VIEW_MARKDOWN;
-			$tabs.append($markdownTab, $('<span/>', { class: 'rc-text-viewer-md-tab-separator', text: '|' }), $htmlTab);
+			$tabs.append($editability, $markdownTab, $('<span/>', { class: 'rc-text-viewer-md-tab-separator', text: '|' }), $htmlTab);
 		}
 		else {
 			$tabs.append(
+				$editability,
 				$rawTab,
 				$('<span/>', { class: 'rc-text-viewer-md-tab-separator', text: '|' }),
 				$markdownTab,
@@ -391,13 +423,18 @@
 		$viewerScroll.append($viewerContent);
 		$viewer.append($viewerScroll, $resizeHandle);
 		$editorViewer.append($editor, $editorResizeHandle);
-		$control.before($toolbar);
-		$control.after($editorViewer);
-		$control.after($viewer);
+		$control.before($rawPanel);
+		$rawPanel.append($control, $rawResizeHandle);
+		$rawPanel.before($toolbar);
+		$rawPanel.after($viewer);
+		$viewer.after($editorViewer);
 
 		$toolbar.on('click', '[data-rc-md-mode]', function (ev) {
 			ev.preventDefault();
-			setMarkdownMode(controller, $(this).attr('data-rc-md-mode'));
+			const mode = $(this).attr('data-rc-md-mode');
+			if (mode !== controller.mode) {
+				setMarkdownMode(controller, mode);
+			}
 		});
 		$toolbar.on('click', '[data-rc-md-action]', function (ev) {
 			ev.preventDefault();
@@ -457,14 +494,14 @@
 
 		const previousMode = controller.mode;
 		const previousLayout = controller.layout;
-		if (mode !== VIEW_RAW && previousMode !== mode && previousLayout !== LAYOUT_NORMAL) {
+		if (previousMode !== mode && previousLayout !== LAYOUT_NORMAL) {
 			rememberMarkdownHeight(controller);
 			restoreMarkdownLayout(controller);
 		}
 
 		controller.mode = mode;
 		if (mode === VIEW_RAW) {
-			restoreMarkdownLayout(controller);
+			syncMarkdownNormalSize(controller, true);
 			showRawMode(controller);
 		}
 		else if (mode === VIEW_MARKDOWN) {
@@ -478,10 +515,10 @@
 		}
 
 		updateMarkdownToolbar(controller);
-		if (mode !== VIEW_RAW && previousMode !== mode && previousLayout === LAYOUT_EXPANDED) {
+		if (previousMode !== mode && previousLayout === LAYOUT_EXPANDED) {
 			expandMarkdown(controller);
 		}
-		if (mode !== VIEW_RAW && previousMode !== mode && previousLayout === LAYOUT_FULLSCREEN) {
+		if (previousMode !== mode && previousLayout === LAYOUT_FULLSCREEN) {
 			fullscreenMarkdown(controller);
 		}
 	}
@@ -493,9 +530,12 @@
 	 * @returns {void}
 	 */
 	function showRawMode(controller) {
-		restoreDataCellContents(controller);
+		if (controller.layout === LAYOUT_NORMAL) {
+			restoreDataCellContents(controller);
+		}
 		controller.$control.show();
-		controller.$expandLink.show();
+		controller.$rawPanel.css('display', 'flex');
+		controller.$expandLink.hide();
 		controller.$viewer.css('display', 'none');
 		controller.$editorViewer.css('display', 'none');
 	}
@@ -507,8 +547,11 @@
 	 * @returns {void}
 	 */
 	function showMarkdownEditorMode(controller) {
-		restoreDataCellContents(controller);
+		if (controller.layout === LAYOUT_NORMAL) {
+			restoreDataCellContents(controller);
+		}
 		controller.$control.hide();
+		controller.$rawPanel.css('display', 'none');
 		controller.$expandLink.hide();
 		controller.$viewer.css('display', 'none');
 		controller.$editorViewer.css('display', 'flex');
@@ -524,8 +567,11 @@
 	 * @returns {void}
 	 */
 	function showHtmlMode(controller) {
-		restoreDataCellContents(controller);
+		if (controller.layout === LAYOUT_NORMAL) {
+			restoreDataCellContents(controller);
+		}
 		controller.$control.hide();
+		controller.$rawPanel.css('display', 'none');
 		controller.$expandLink.hide();
 		controller.$editorViewer.css('display', 'none');
 		controller.$viewer.css('display', 'flex');
@@ -545,14 +591,14 @@
 			$tab.toggleClass('active', active);
 			$tab.attr('aria-current', active ? 'true' : 'false');
 		});
-		const isEnhancedMode = controller.mode === VIEW_MARKDOWN || controller.mode === VIEW_HTML;
-		controller.$actions[isEnhancedMode ? 'show' : 'hide']();
-		controller.$expandButton[isEnhancedMode && controller.canExpandToRowWidth && controller.layout !== LAYOUT_EXPANDED ? 'show' : 'hide']();
-		controller.$fullscreenButton[isEnhancedMode && controller.layout !== LAYOUT_FULLSCREEN ? 'show' : 'hide']();
-		controller.$collapseButton[isEnhancedMode && (controller.layout === LAYOUT_FULLSCREEN || controller.layout === LAYOUT_EXPANDED) ? 'show' : 'hide']();
+		const isPanelMode = controller.mode === VIEW_MARKDOWN || controller.mode === VIEW_HTML || (controller.mode === VIEW_RAW && controller.canExpandRaw);
+		controller.$actions[isPanelMode ? 'show' : 'hide']();
+		controller.$expandButton[isPanelMode && controller.canExpandToRowWidth && controller.layout !== LAYOUT_EXPANDED ? 'show' : 'hide']();
+		controller.$fullscreenButton[isPanelMode && controller.layout !== LAYOUT_FULLSCREEN ? 'show' : 'hide']();
+		controller.$collapseButton[isPanelMode && (controller.layout === LAYOUT_FULLSCREEN || controller.layout === LAYOUT_EXPANDED) ? 'show' : 'hide']();
 		controller.$toolbar
 			.attr('data-rc-md-layout', controller.layout)
-			.toggleClass('rc-text-viewer-md-toolbar--markdown', isEnhancedMode);
+			.toggleClass('rc-text-viewer-md-toolbar--markdown', isPanelMode);
 	}
 
 	/**
@@ -631,7 +677,7 @@
 	 * @returns {void}
 	 */
 	function initMarkdownResizeHandle(controller) {
-		controller.$resizeHandle.add(controller.$editorResizeHandle).on('mousedown', function (ev) {
+		controller.$resizeHandle.add(controller.$editorResizeHandle).add(controller.$rawResizeHandle).on('mousedown', function (ev) {
 			if (controller.layout === LAYOUT_FULLSCREEN) {
 				return;
 			}
@@ -646,6 +692,9 @@
 			$(document).on('mouseup.rcTextViewerResize', function () {
 				$(document).off('.rcTextViewerResize');
 			});
+		}).on('dblclick', function (ev) {
+			ev.preventDefault();
+			expandMarkdownToContent(controller);
 		});
 	}
 
@@ -680,10 +729,11 @@
 	 */
 	function setMarkdownViewerHeight(controller, height) {
 		height = Math.max(MIN_MARKDOWN_HEIGHT, Math.floor(height));
-		controller.$viewer.add(controller.$editorViewer).css({
+		controller.$viewer.add(controller.$editorViewer).add(controller.$rawPanel).css({
 			height: height + 'px',
 			'min-height': MIN_MARKDOWN_HEIGHT + 'px',
 		});
+		controller.$control.css('min-height', '');
 		controller.$editor.css('min-height', '');
 		if (controller.layout === LAYOUT_NORMAL) {
 			controller.normalHeight = height;
@@ -742,6 +792,13 @@
 			'min-height': MIN_MARKDOWN_HEIGHT + 'px',
 			'margin-left': '',
 		});
+		controller.$rawPanel.css({
+			width: cssWidth,
+			height: height + 'px',
+			'min-height': MIN_MARKDOWN_HEIGHT + 'px',
+			'margin-left': '',
+		});
+		controller.$control.css('min-height', '');
 		controller.$editor.css('min-height', '');
 		controller.$toolbar.css({
 			width: cssWidth,
@@ -762,7 +819,7 @@
 		if (!controller.canExpandToRowWidth) {
 			return;
 		}
-		if (controller.mode !== VIEW_MARKDOWN && controller.mode !== VIEW_HTML) {
+		if (controller.mode !== VIEW_RAW && controller.mode !== VIEW_MARKDOWN && controller.mode !== VIEW_HTML) {
 			setMarkdownMode(controller, VIEW_HTML);
 		}
 		if (controller.layout !== LAYOUT_NORMAL) {
@@ -803,7 +860,7 @@
 	 * @returns {void}
 	 */
 	function fullscreenMarkdown(controller) {
-		if (controller.mode !== VIEW_MARKDOWN && controller.mode !== VIEW_HTML) {
+		if (controller.mode !== VIEW_RAW && controller.mode !== VIEW_MARKDOWN && controller.mode !== VIEW_HTML) {
 			setMarkdownMode(controller, VIEW_HTML);
 		}
 		if (controller.layout !== LAYOUT_FULLSCREEN) {
@@ -853,7 +910,10 @@
 		rememberMarkdownHeight(controller);
 		restoreMarkdownLayout(controller);
 		syncMarkdownNormalSize(controller, false);
-		if (controller.mode === VIEW_MARKDOWN) {
+		if (controller.mode === VIEW_RAW) {
+			showRawMode(controller);
+		}
+		else if (controller.mode === VIEW_MARKDOWN) {
 			showMarkdownEditorMode(controller);
 		}
 		else {
@@ -903,8 +963,12 @@
 		if (
 			$target[0] === controller.$toolbar[0]
 			|| $target[0] === controller.$viewer[0]
+			|| (controller.$editorViewer && $target[0] === controller.$editorViewer[0])
+			|| (controller.$rawPanel && $target[0] === controller.$rawPanel[0])
 			|| $.contains(controller.$toolbar[0], $target[0])
 			|| $.contains(controller.$viewer[0], $target[0])
+			|| (controller.$editorViewer && $.contains(controller.$editorViewer[0], $target[0]))
+			|| (controller.$rawPanel && $.contains(controller.$rawPanel[0], $target[0]))
 		) {
 			$target = controller.$control.parent();
 		}
@@ -927,6 +991,7 @@
 		controller.layout = LAYOUT_NORMAL;
 		controller.$toolbar.removeClass('rc-text-viewer-md-toolbar--expanded rc-text-viewer-md-toolbar--fullscreen');
 		controller.$viewer.add(controller.$editorViewer).removeClass('rc-text-viewer-md-preview--expanded rc-text-viewer-md-preview--fullscreen');
+		controller.$rawPanel.removeClass('rc-text-viewer-md-preview--expanded rc-text-viewer-md-preview--fullscreen');
 		if (controller.bodyOverflow !== null) {
 			$('body').css('overflow', controller.bodyOverflow);
 			controller.bodyOverflow = null;
@@ -944,7 +1009,12 @@
 		controller.$dataCell = $dataCell;
 		$dataCell.children().each(function () {
 			const $child = $(this);
-			if ($child[0] === controller.$toolbar[0] || $child[0] === controller.$viewer[0]) {
+			if (
+				$child[0] === controller.$toolbar[0]
+				|| $child[0] === controller.$viewer[0]
+				|| (controller.$editorViewer && $child[0] === controller.$editorViewer[0])
+				|| (controller.$rawPanel && $child[0] === controller.$rawPanel[0])
+			) {
 				return;
 			}
 			if (typeof $child.data('rcTextViewerOriginalDisplay') === 'undefined') {
@@ -1003,13 +1073,14 @@
 			return;
 		}
 		const $panel = controller.$movedPanel || getMarkdownActivePanel(controller);
-		controller.$control.before(controller.$toolbar);
 		if (controller.restoreNext) {
 			controller.restoreParent.insertBefore($panel[0], controller.restoreNext);
 		}
 		else {
 			controller.restoreParent.appendChild($panel[0]);
 		}
+		const $toolbarAnchor = controller.$rawPanel && controller.$rawPanel.parent().length ? controller.$rawPanel : controller.$control;
+		$toolbarAnchor.before(controller.$toolbar);
 		controller.restoreParent = null;
 		controller.restoreNext = null;
 		controller.$movedPanel = null;
@@ -1022,7 +1093,32 @@
 	 * @returns {jQuery}
 	 */
 	function getMarkdownActivePanel(controller) {
+		if (controller.mode === VIEW_RAW) {
+			return controller.$rawPanel;
+		}
 		return controller.mode === VIEW_MARKDOWN ? controller.$editorViewer : controller.$viewer;
+	}
+
+	/**
+	 * Expands the active Markdown panel to fit its content vertically.
+	 *
+	 * @param {object} controller Markdown controller.
+	 * @returns {void}
+	 */
+	function expandMarkdownToContent(controller) {
+		let contentHeight = MIN_MARKDOWN_HEIGHT;
+		if (controller.mode === VIEW_RAW) {
+			const control = controller.$control[0];
+			contentHeight = control ? control.scrollHeight + controller.$rawResizeHandle.outerHeight() : contentHeight;
+		}
+		else if (controller.mode === VIEW_MARKDOWN && controller.editor) {
+			const lineHeight = controller.editor.renderer.lineHeight || 16;
+			contentHeight = (controller.editor.session.getScreenLength() * lineHeight) + 24;
+		}
+		else if (controller.mode === VIEW_HTML) {
+			contentHeight = controller.$viewerContent.outerHeight(true) + controller.$resizeHandle.outerHeight() + 24;
+		}
+		setMarkdownViewerHeight(controller, contentHeight);
 	}
 
 	/**
@@ -1120,14 +1216,7 @@
 			'data-rc-text-viewer-field': fieldName,
 		});
 		const $tabs = $('<span/>', { class: 'rc-text-viewer-md-tabs' });
-		const $editability = $('<span/>', {
-			class: 'rc-text-viewer-edit-state',
-			title: field.readonly ? 'Readonly' : 'Editable',
-			'aria-label': field.readonly ? 'Readonly' : 'Editable',
-		}).append($('<i/>', {
-			class: field.readonly ? 'fa-solid fa-pencil-slash text-danger' : 'fa-solid fa-pencil',
-			'aria-hidden': 'true',
-		}));
+		const $editability = createEditStateIndicator(!!field.readonly);
 		const $rawTab = $('<a/>', {
 			href: 'javascript:;',
 			class: 'rc-text-viewer-md-tab',
@@ -1162,6 +1251,17 @@
 			'aria-orientation': 'horizontal',
 			title: 'Drag to resize',
 		});
+		const $rawPanel = $('<div/>', {
+			class: 'rc-text-viewer-raw-panel',
+			'data-rc-text-viewer-field': fieldName,
+		});
+		const $rawResizeHandle = $('<div/>', {
+			class: 'rc-text-viewer-md-resize-handle',
+			role: 'separator',
+			'aria-orientation': 'horizontal',
+			title: 'Drag to resize',
+		});
+		const canExpandRaw = $control.is('textarea');
 		const controller = {
 			fieldName: fieldName,
 			$control: $control,
@@ -1170,7 +1270,9 @@
 			$toolbar: $toolbar,
 			$viewer: $viewer,
 			$editor: $editor,
+			$rawPanel: $rawPanel,
 			$resizeHandle: $resizeHandle,
+			$rawResizeHandle: $rawResizeHandle,
 			$status: $status,
 			$actions: $actions,
 			$expandButton: $expandButton,
@@ -1182,6 +1284,7 @@
 			storageFormat: storageFormat,
 			rowConfig: field.rowConfig === 'full' ? 'full' : 'split',
 			canExpandToRowWidth: field.rowConfig === 'split',
+			canExpandRaw: canExpandRaw,
 			mode: jsonConfig.initialMode === VIEW_JSON ? VIEW_JSON : VIEW_RAW,
 			layout: LAYOUT_NORMAL,
 			height: initialHeight || $control.outerHeight() || MIN_MARKDOWN_HEIGHT,
@@ -1213,12 +1316,23 @@
 		$actions.append($expandButton, $fullscreenButton, $collapseButton);
 		$toolbar.append($tabs, $actions);
 		$viewer.append($editor, $resizeHandle);
-		$control.before($toolbar);
-		$control.after($viewer);
+		if (canExpandRaw) {
+			$control.before($rawPanel);
+			$rawPanel.append($control, $rawResizeHandle);
+			$rawPanel.before($toolbar);
+			$rawPanel.after($viewer);
+		}
+		else {
+			$control.before($toolbar);
+			$control.after($viewer);
+		}
 
 		$toolbar.on('click', '[data-rc-json-mode]', function (ev) {
 			ev.preventDefault();
-			setJsonMode(controller, $(this).attr('data-rc-json-mode'));
+			const mode = $(this).attr('data-rc-json-mode');
+			if (mode !== controller.mode) {
+				setJsonMode(controller, mode);
+			}
 		});
 		$toolbar.on('click', '[data-rc-md-action]', function (ev) {
 			ev.preventDefault();
@@ -1283,17 +1397,25 @@
 			mode = VIEW_RAW;
 		}
 
+		const previousMode = controller.mode;
+		const previousLayout = controller.layout;
+		if (previousMode !== mode && previousLayout !== LAYOUT_NORMAL) {
+			rememberJsonHeight(controller);
+			restoreJsonLayout(controller);
+		}
 		controller.mode = mode;
 		if (mode === VIEW_RAW) {
 			normalizeJsonEditor(controller);
-			restoreJsonLayout(controller);
+			syncJsonSize(controller);
 			controller.$control.show();
-			controller.$expandLink.show();
+			controller.$rawPanel.css('display', controller.canExpandRaw ? 'flex' : 'none');
+			controller.$expandLink.hide();
 			controller.$viewer.css('display', 'none');
 		}
 		else {
 			syncJsonSize(controller);
 			controller.$control.hide();
+			controller.$rawPanel.css('display', 'none');
 			controller.$expandLink.hide();
 			controller.$viewer.css('display', 'flex');
 			if (controller.editor) {
@@ -1301,6 +1423,12 @@
 			}
 		}
 		updateJsonToolbar(controller);
+		if (previousMode !== mode && previousLayout === LAYOUT_EXPANDED) {
+			expandJson(controller);
+		}
+		if (previousMode !== mode && previousLayout === LAYOUT_FULLSCREEN) {
+			fullscreenJson(controller);
+		}
 	}
 
 	/**
@@ -1330,19 +1458,20 @@
 	 */
 	function updateJsonToolbar(controller) {
 		const isJson = controller.mode === VIEW_JSON;
+		const isPanelMode = isJson || (controller.mode === VIEW_RAW && controller.canExpandRaw);
 		controller.$toolbar.find('[data-rc-json-mode]').each(function () {
 			const $tab = $(this);
 			const active = $tab.attr('data-rc-json-mode') === controller.mode;
 			$tab.toggleClass('active', active);
 			$tab.attr('aria-current', active ? 'true' : 'false');
 		});
-		controller.$actions[isJson ? 'show' : 'hide']();
-		controller.$expandButton[isJson && controller.canExpandToRowWidth && controller.layout !== LAYOUT_EXPANDED ? 'show' : 'hide']();
-		controller.$fullscreenButton[isJson && controller.layout !== LAYOUT_FULLSCREEN ? 'show' : 'hide']();
-		controller.$collapseButton[isJson && (controller.layout === LAYOUT_FULLSCREEN || controller.layout === LAYOUT_EXPANDED) ? 'show' : 'hide']();
+		controller.$actions[isPanelMode ? 'show' : 'hide']();
+		controller.$expandButton[isPanelMode && controller.canExpandToRowWidth && controller.layout !== LAYOUT_EXPANDED ? 'show' : 'hide']();
+		controller.$fullscreenButton[isPanelMode && controller.layout !== LAYOUT_FULLSCREEN ? 'show' : 'hide']();
+		controller.$collapseButton[isPanelMode && (controller.layout === LAYOUT_FULLSCREEN || controller.layout === LAYOUT_EXPANDED) ? 'show' : 'hide']();
 		controller.$toolbar
 			.attr('data-rc-json-layout', controller.layout)
-			.toggleClass('rc-text-viewer-md-toolbar--markdown', isJson);
+			.toggleClass('rc-text-viewer-md-toolbar--markdown', isPanelMode);
 	}
 
 	/**
@@ -1368,6 +1497,12 @@
 			'min-height': MIN_MARKDOWN_HEIGHT + 'px',
 			'margin-left': '',
 		});
+		controller.$rawPanel.css({
+			width: cssWidth,
+			height: Math.max(controller.height, MIN_MARKDOWN_HEIGHT) + 'px',
+			'min-height': MIN_MARKDOWN_HEIGHT + 'px',
+			'margin-left': '',
+		});
 		controller.$editor.css({
 			'min-height': '',
 		});
@@ -1385,10 +1520,11 @@
 	 */
 	function setJsonViewerHeight(controller, height, userResize) {
 		height = Math.max(MIN_MARKDOWN_HEIGHT, Math.floor(height));
-		controller.$viewer.css({
+		controller.$viewer.add(controller.$rawPanel).css({
 			height: height + 'px',
 			'min-height': MIN_MARKDOWN_HEIGHT + 'px',
 		});
+		controller.$control.css('min-height', '');
 		controller.$editor.css({
 			'min-height': '',
 		});
@@ -1421,7 +1557,7 @@
 	 * @returns {void}
 	 */
 	function rememberJsonHeight(controller) {
-		const height = controller.$viewer.outerHeight();
+		const height = getJsonActivePanel(controller).outerHeight();
 		if (!height) {
 			return;
 		}
@@ -1443,13 +1579,13 @@
 	 * @returns {void}
 	 */
 	function initJsonResizeHandle(controller) {
-		controller.$resizeHandle.on('mousedown', function (ev) {
+		controller.$resizeHandle.add(controller.$rawResizeHandle).on('mousedown', function (ev) {
 			if (controller.layout === LAYOUT_FULLSCREEN) {
 				return;
 			}
 			ev.preventDefault();
 			const startY = ev.pageY;
-			const startHeight = controller.$viewer.outerHeight();
+			const startHeight = getJsonActivePanel(controller).outerHeight();
 
 			$(document).on('mousemove.rcTextViewerJsonResize', function (moveEv) {
 				const nextHeight = Math.max(MIN_MARKDOWN_HEIGHT, startHeight + (moveEv.pageY - startY));
@@ -1458,6 +1594,9 @@
 			$(document).on('mouseup.rcTextViewerJsonResize', function () {
 				$(document).off('.rcTextViewerJsonResize');
 			});
+		}).on('dblclick', function (ev) {
+			ev.preventDefault();
+			expandJsonToContent(controller);
 		});
 	}
 
@@ -1471,7 +1610,7 @@
 		if (!controller.canExpandToRowWidth) {
 			return;
 		}
-		if (controller.mode !== VIEW_JSON) {
+		if (controller.mode !== VIEW_RAW && controller.mode !== VIEW_JSON) {
 			setJsonMode(controller, VIEW_JSON);
 		}
 		if (controller.layout !== LAYOUT_NORMAL) {
@@ -1479,26 +1618,27 @@
 			restoreJsonLayout(controller);
 		}
 
+		const $panel = getJsonActivePanel(controller);
 		const $target = getMarkdownExpandTarget(controller);
 		const $expandedCell = createExpandedRow(controller);
-		const rowWidth = Math.max((controller.$row.length ? controller.$row.outerWidth() : $target.outerWidth()), controller.$viewer.outerWidth());
-		const currentHeight = controller.$viewer.outerHeight() || controller.height;
+		const rowWidth = Math.max((controller.$row.length ? controller.$row.outerWidth() : $target.outerWidth()), $panel.outerWidth());
+		const currentHeight = $panel.outerHeight() || controller.height;
 		const expandedHeight = controller.userHeight || controller.expandedHeight || Math.max(currentHeight, Math.floor(rowWidth / 2));
 		captureMarkdownPlacement(controller);
 		$expandedCell.append(controller.$toolbar);
-		$expandedCell.append(controller.$viewer);
+		$expandedCell.append($panel);
 		hideDataCellContents(controller, $target);
 		controller.$toolbar.css({
 			width: '100%',
 			'margin-left': '',
 		});
-		controller.$viewer.css({
+		$panel.css({
 			width: '100%',
 			'margin-left': '',
 		});
 		controller.layout = LAYOUT_EXPANDED;
 		controller.$toolbar.addClass('rc-text-viewer-md-toolbar--expanded');
-		controller.$viewer.addClass('rc-text-viewer-md-preview--expanded');
+		$panel.addClass('rc-text-viewer-md-preview--expanded');
 		setJsonViewerHeight(controller, expandedHeight, false);
 		updateJsonToolbar(controller);
 	}
@@ -1510,31 +1650,32 @@
 	 * @returns {void}
 	 */
 	function fullscreenJson(controller) {
-		if (controller.mode !== VIEW_JSON) {
+		if (controller.mode !== VIEW_RAW && controller.mode !== VIEW_JSON) {
 			setJsonMode(controller, VIEW_JSON);
 		}
 		if (controller.layout !== LAYOUT_FULLSCREEN) {
 			rememberJsonHeight(controller);
 			captureMarkdownPlacement(controller);
 		}
+		const $panel = getJsonActivePanel(controller);
 		controller.bodyOverflow = $('body').css('overflow');
 		$('body').css('overflow', 'hidden');
 		$('body').append(controller.$toolbar);
-		$('body').append(controller.$viewer);
-		const fullscreenHeight = controller.fullscreenHeight || Math.max(controller.$viewer.outerHeight() || controller.height, $(global).height() - 64);
+		$('body').append($panel);
+		const fullscreenHeight = controller.fullscreenHeight || Math.max($panel.outerHeight() || controller.height, $(global).height() - 64);
 		controller.$toolbar.css({
 			width: '',
 			'margin-left': '',
 		});
-		controller.$viewer.css({
+		$panel.css({
 			width: '',
 			'margin-left': '',
 		});
 		controller.layout = LAYOUT_FULLSCREEN;
 		controller.$toolbar.removeClass('rc-text-viewer-md-toolbar--expanded');
 		controller.$toolbar.addClass('rc-text-viewer-md-toolbar--fullscreen');
-		controller.$viewer.removeClass('rc-text-viewer-md-preview--expanded');
-		controller.$viewer.addClass('rc-text-viewer-md-preview--fullscreen');
+		$panel.removeClass('rc-text-viewer-md-preview--expanded');
+		$panel.addClass('rc-text-viewer-md-preview--fullscreen');
 		setJsonViewerHeight(controller, fullscreenHeight, false);
 		updateJsonToolbar(controller);
 	}
@@ -1553,8 +1694,17 @@
 		rememberJsonHeight(controller);
 		restoreJsonLayout(controller);
 		syncJsonSize(controller);
-		controller.$viewer.css('display', 'flex');
-		if (controller.editor) {
+		if (controller.mode === VIEW_RAW) {
+			controller.$control.show();
+			controller.$rawPanel.css('display', controller.canExpandRaw ? 'flex' : 'none');
+			controller.$viewer.css('display', 'none');
+		}
+		else {
+			controller.$control.hide();
+			controller.$rawPanel.css('display', 'none');
+			controller.$viewer.css('display', 'flex');
+		}
+		if (controller.mode === VIEW_JSON && controller.editor) {
 			controller.editor.resize();
 		}
 		updateJsonToolbar(controller);
@@ -1576,10 +1726,40 @@
 		controller.layout = LAYOUT_NORMAL;
 		controller.$toolbar.removeClass('rc-text-viewer-md-toolbar--expanded rc-text-viewer-md-toolbar--fullscreen');
 		controller.$viewer.removeClass('rc-text-viewer-md-preview--expanded rc-text-viewer-md-preview--fullscreen');
+		controller.$rawPanel.removeClass('rc-text-viewer-md-preview--expanded rc-text-viewer-md-preview--fullscreen');
 		if (controller.bodyOverflow !== null) {
 			$('body').css('overflow', controller.bodyOverflow);
 			controller.bodyOverflow = null;
 		}
+	}
+
+	/**
+	 * Returns the active enhanced JSON panel.
+	 *
+	 * @param {object} controller JSON controller.
+	 * @returns {jQuery}
+	 */
+	function getJsonActivePanel(controller) {
+		return controller.mode === VIEW_RAW && controller.canExpandRaw ? controller.$rawPanel : controller.$viewer;
+	}
+
+	/**
+	 * Expands the active JSON panel to fit its content vertically.
+	 *
+	 * @param {object} controller JSON controller.
+	 * @returns {void}
+	 */
+	function expandJsonToContent(controller) {
+		let contentHeight = MIN_MARKDOWN_HEIGHT;
+		if (controller.mode === VIEW_RAW && controller.canExpandRaw) {
+			const control = controller.$control[0];
+			contentHeight = control ? control.scrollHeight + controller.$rawResizeHandle.outerHeight() : contentHeight;
+		}
+		else if (controller.editor) {
+			const lineHeight = controller.editor.renderer.lineHeight || 16;
+			contentHeight = (controller.editor.session.getScreenLength() * lineHeight) + 24;
+		}
+		setJsonViewerHeight(controller, contentHeight, true);
 	}
 
 	/**
