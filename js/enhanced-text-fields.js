@@ -538,7 +538,7 @@
 	function createMarkdownController($control, field) {
 		const fieldName = field.name;
 		const markdownConfig = field.markdown || {};
-		const mdOnly = !!markdownConfig.mdOnly;
+		const mdOnly = !!markdownConfig.editorOnly;
 		const initialHeight = Number.isInteger(markdownConfig.height) && markdownConfig.height > 0
 			? Math.max(markdownConfig.height, MIN_MARKDOWN_HEIGHT)
 			: null;
@@ -1801,7 +1801,7 @@
 	function createJsonController($control, field) {
 		const fieldName = field.name;
 		const jsonConfig = field.json || {};
-		const jsonOnly = !!jsonConfig.jsonOnly;
+		const jsonOnly = !!jsonConfig.editorOnly;
 		const storageFormat = $control.is('textarea') && jsonConfig.format !== 'compact' ? 'pretty' : 'compact';
 		const displayFormat = 'pretty';
 		const initialHeight = Number.isInteger(jsonConfig.height) && jsonConfig.height > 0

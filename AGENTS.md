@@ -25,6 +25,10 @@ This repository is a REDCap External Module. Prefer small, reviewable changes th
 * jQuery is available in REDCap. Prefer jQuery for REDCap-integrated UI/event code unless plain DOM APIs are clearly simpler.
 * Use `ConsoleDebugLogger.js` together with the `javascript-debug` project setting for useful debug output, especially for initialization config and non-trivial client-side state.
 
+## Markdown Conventions
+
+* Do not artificially wrap lines in flow text unless a semantic paragraph is needed.
+
 ## REDCap External Module Notes
 
 * External Module Framework documentation starts here:

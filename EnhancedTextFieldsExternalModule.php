@@ -47,8 +47,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			$user_id = $this->framework->getUser()->getUsername();
 			$Proj = $GLOBALS['Proj'];
 			$this->injectEnhancedFields($Proj, $record, $instrument, $event_id, $repeat_instance, $user_id);
-		}
-		catch (\Throwable $e) {
+		} catch (\Throwable $e) {
 			// Ignore - if there is no user, we should not do anything
 		}
 	}
@@ -115,16 +114,17 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 	private function injectEnhancedFields($Proj, $record, $instrument, $event_id, $repeat_instance, $user_id)
 	{
 		$is_survey = $user_id === null;
+		// Check if there are any enhanced fields to inject
 		$enhanced_fields = $this->getEnhancedFields($Proj, $record, $instrument, $event_id, $repeat_instance, $is_survey);
 		if (empty($enhanced_fields)) {
 			return;
 		}
+
+		// Remove readonly from enhanced fields
 		$this->removeREDCapReadonly($Proj, $enhanced_fields);
 
 		$this->js_debug = $this->getProjectSetting('javascript-debug') == '1';
 
-		$inject = InjectionHelper::init($this);
-		$has_markdown = $this->hasEnhancementType($enhanced_fields, 'markdown');
 		// Build client config
 		$config = array(
 			'debug' => $this->js_debug,
@@ -136,8 +136,10 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 		);
 		$config_json = json_encode($config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
 
+		// Inject CSS and JS
+		$inject = InjectionHelper::init($this);
 		$inject->css('css/enhanced-text-fields.css');
-		if ($has_markdown) {
+		if ($this->hasEnhancementType($enhanced_fields, 'markdown')) {
 			$inject->css('css/github-markdown-light.css');
 			$inject->css('css/highlight-theme.css');
 			$inject->js('js/marked.min.js');
@@ -146,12 +148,14 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 		}
 		$inject->js('js/ConsoleDebugLogger.js');
 		$inject->js('js/enhanced-text-fields.js');
+
+		// Inject the JSMO and the module initialization code.
 		$this->initializeJavascriptModuleObject();
-		?>
+?>
 		<script type="text/javascript">
 			DE_RUB_SEG_EnhancedTextFieldsEM.init(<?= $config_json ?>);
 		</script>
-		<?php
+<?php
 	}
 
 
@@ -297,7 +301,8 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 	 * @param array $enhanced_fields 
 	 * @return void 
 	 */
-	private function removeREDCapReadonly($Proj, $enhanced_fields) {
+	private function removeREDCapReadonly($Proj, $enhanced_fields)
+	{
 		// Remove readonly action tags from enhanced fields
 		$metadata_name = \Design::isDraftPreview($Proj->project_id) ? 'metadata_temp' : 'metadata';
 		$metadata = &$Proj->$metadata_name;
@@ -349,64 +354,32 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 		$viewerFields = [];
 		$metadata = $Proj->getMetadata();
 
-		$is_readonly = function($fieldName) use ($actionTags, $is_survey) {
+		$is_readonly = function ($fieldName) use ($actionTags, $is_survey) {
 			if (isset($actionTags['@READONLY'][$fieldName])) return true;
 			if (isset($actionTags['@READONLY-FORM'][$fieldName]) && !$is_survey) return true;
 			if (isset($actionTags['@READONLY-SURVEY'][$fieldName]) && $is_survey) return true;
 			return false;
 		};
 
-		foreach ($actionTags[self::AT_ENHANCED_TEXT_MARKDOWN] ?? [] as $fieldName => $tagInfo) {
-			$params = $tagInfo['params'] ?? '';
-			if (!$this->shouldInjectForScope($params, $is_survey)) continue;
-			$fieldMetadata = $metadata[$fieldName] ?? null;
-			if (empty($fieldMetadata) || ($fieldMetadata['element_type'] ?? '') !== 'textarea') continue;
-			$viewerFields[$fieldName] = [
-				'name' => $fieldName,
-				'viewers' => ['markdown'],
-				'readonly' => $is_readonly($fieldName),
-				'rowConfig' => in_array($fieldMetadata['custom_alignment'] ?? '', ['LH', 'LV']) ? 'full' : 'split',
-				'markdown' => $this->parseMarkdownViewerParams($params),
-			];
-		}
-		foreach ($actionTags[self::AT_ENHANCED_TEXT_JSON] ?? [] as $fieldName => $tagInfo) {
-			$params = $tagInfo['params'] ?? '';
-			if (!$this->shouldInjectForScope($params, $is_survey)) continue;
-			$fieldMetadata = $metadata[$fieldName] ?? null;
-			if (empty($fieldMetadata) || !in_array($fieldMetadata['element_type'] ?? '', ['text', 'textarea'], true)) continue;
-			$jsonParams = $this->parseJsonViewerParams($params);
-			if (($fieldMetadata['element_type'] ?? '') === 'text') {
-				$jsonParams['format'] = 'compact';
-			}
-			if (!isset($viewerFields[$fieldName])) {
-				$viewerFields[$fieldName] = [
-					'name' => $fieldName,
-					'viewers' => ['json'],
-					'readonly' => $is_readonly($fieldName),
-					'rowConfig' => in_array($fieldMetadata['custom_alignment'] ?? '', ['LH', 'LV']) ? 'full' : 'split',
-					'json' => $jsonParams,
-				];
-			} else {
-				$viewerFields[$fieldName]['viewers'][] = 'json';
-				$viewerFields[$fieldName]['json'] = $jsonParams;
-			}
-		}
-		$ace_enhancements = array(
-			'text' => array('tag' => self::AT_ENHANCED_TEXT_PLAIN, 'label' => 'Text', 'allowTextField' => false),
-			'css' => array('tag' => self::AT_ENHANCED_TEXT_CSS, 'label' => 'CSS', 'allowTextField' => true),
-			'ini' => array('tag' => self::AT_ENHANCED_TEXT_INI, 'label' => 'INI', 'allowTextField' => false),
-			'r' => array('tag' => self::AT_ENHANCED_TEXT_R, 'label' => 'R', 'allowTextField' => false),
-			'xml' => array('tag' => self::AT_ENHANCED_TEXT_XML, 'label' => 'XML', 'allowTextField' => true),
-			'yaml' => array('tag' => self::AT_ENHANCED_TEXT_YAML, 'label' => 'YAML', 'allowTextField' => false),
+		$text_enhancements = array(
+			'text' => array('tag' => self::AT_ENHANCED_TEXT_PLAIN, 'labels' => ['Text'], 'allowTextField' => false),
+			'markdown' => array('tag' => self::AT_ENHANCED_TEXT_MARKDOWN, 'labels' => ['Markdown', 'HTML'], 'allowTextField' => false),
+			'json' => array('tag' => self::AT_ENHANCED_TEXT_JSON, 'labels' => ['JSON'], 'allowTextField' => true),
+			'css' => array('tag' => self::AT_ENHANCED_TEXT_CSS, 'labels' => ['CSS'], 'allowTextField' => true),
+			'ini' => array('tag' => self::AT_ENHANCED_TEXT_INI, 'labels' => ['INI'], 'allowTextField' => false),
+			'r' => array('tag' => self::AT_ENHANCED_TEXT_R, 'labels' => ['R'], 'allowTextField' => false),
+			'xml' => array('tag' => self::AT_ENHANCED_TEXT_XML, 'labels' => ['XML'], 'allowTextField' => true),
+			'yaml' => array('tag' => self::AT_ENHANCED_TEXT_YAML, 'labels' => ['YAML'], 'allowTextField' => false),
 		);
-		foreach ($ace_enhancements as $mode => $enhancement) {
+		foreach ($text_enhancements as $mode => $enhancement) {
 			foreach ($actionTags[$enhancement['tag']] ?? [] as $fieldName => $tagInfo) {
-				$params = $tagInfo['params'] ?? '';
-				if (!$this->shouldInjectForScope($params, $is_survey)) continue;
+				$params = $this->parseActionTagParams($tagInfo['params'] ?? '', $mode);
+				if (!$this->shouldInjectForScope($params['scope'], $is_survey)) continue;
 				$fieldMetadata = $metadata[$fieldName] ?? null;
 				$allowedTypes = $enhancement['allowTextField'] ? ['text', 'textarea'] : ['textarea'];
 				if (empty($fieldMetadata) || !in_array($fieldMetadata['element_type'] ?? '', $allowedTypes, true)) continue;
-				$params = $this->parseAceTextParams($params, $mode);
+				// Skip any text fields that have a validation
+				if ($fieldMetadata['element_type'] === 'text' && !empty($fieldMetadata['element_validation_type'])) continue;
 				if (($fieldMetadata['element_type'] ?? '') === 'text') {
 					$params['format'] = 'compact';
 				}
@@ -429,77 +402,14 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 	}
 
 	/**
-	 * Parses @ENHANCED-TEXT-MARKDOWN parameters.
-	 *
-	 * @param mixed $params Raw action-tag parameter value.
-	 * @return array
-	 */
-	private function parseMarkdownViewerParams($params)
-	{
-		$config = array(
-			'initialMode' => 'raw',
-			'mdOnly' => false,
-			'height' => null,
-		);
-		$value = trim((string)$params);
-		if ($value === '') {
-			return $config;
-		}
-
-		$decoded = json_decode($value, true);
-		if (is_string($decoded)) {
-			$value = $decoded;
-		}
-		else {
-			$value = trim($value, "\"'");
-		}
-
-		$tokens = array_map('trim', explode(',', strtolower($value)));
-		foreach ($tokens as $token) {
-			if ($token === '') {
-				continue;
-			}
-			if ($token === 'md-only') {
-				$config['mdOnly'] = true;
-				$config['initialMode'] = 'markdown';
-				continue;
-			}
-			if (strpos($token, 'initial:') === 0) {
-				$mode = trim(substr($token, strlen('initial:')));
-				if ($mode === 'md') {
-					$config['initialMode'] = 'markdown';
-				}
-				if ($mode === 'html') {
-					$config['initialMode'] = 'html';
-				}
-				if ($mode === 'raw') {
-					$config['initialMode'] = 'raw';
-				}
-			}
-			if (strpos($token, 'height:') === 0) {
-				$height = trim(substr($token, strlen('height:')));
-				if (ctype_digit($height) && (int)$height > 0) {
-					$config['height'] = (int)$height;
-				}
-			}
-		}
-
-		if ($config['mdOnly']) {
-			$config['initialMode'] = 'markdown';
-		}
-		return $config;
-	}
-
-	/**
 	 * Determines whether an action tag should inject controls in the current page scope.
 	 *
-	 * @param mixed $params    Raw action-tag parameter value.
+	 * @param mixed $scope     Scope (form, survey, all).
 	 * @param bool  $is_survey Whether the current page is a survey page.
 	 * @return bool
 	 */
-	private function shouldInjectForScope($params, $is_survey)
+	private function shouldInjectForScope($scope, $is_survey)
 	{
-		$scope = $this->parseActionTagScope($params);
 		if ($scope === 'all') {
 			return true;
 		}
@@ -510,124 +420,13 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 	}
 
 	/**
-	 * Parses the scope parameter shared by all enhancement action tags.
-	 *
-	 * @param mixed $params Raw action-tag parameter value.
-	 * @return string
-	 */
-	private function parseActionTagScope($params)
-	{
-		$value = trim((string)$params);
-		if ($value === '') {
-			return 'form';
-		}
-
-		$decoded = json_decode($value, true);
-		if (is_string($decoded)) {
-			$value = $decoded;
-		}
-		else {
-			$value = trim($value, "\"'");
-		}
-
-		$scope = 'form';
-		$tokens = array_map('trim', explode(',', strtolower($value)));
-		foreach ($tokens as $token) {
-			if (strpos($token, 'scope:') !== 0) {
-				continue;
-			}
-			$parsed_scope = trim(substr($token, strlen('scope:')));
-			if (in_array($parsed_scope, ['form', 'survey', 'all'], true)) {
-				$scope = $parsed_scope;
-			}
-		}
-		return $scope;
-	}
-
-	/**
-	 * Parses @ENHANCED-TEXT-JSON parameters.
-	 *
-	 * @param mixed $params Raw action-tag parameter value.
-	 * @return array
-	 */
-	private function parseJsonViewerParams($params)
-	{
-		$config = array(
-			'initialMode' => 'raw',
-			'jsonOnly' => false,
-			'height' => null,
-			'format' => 'pretty',
-			'indent' => 2,
-		);
-		$value = trim((string)$params);
-		if ($value === '') {
-			return $config;
-		}
-
-		$decoded = json_decode($value, true);
-		if (is_string($decoded)) {
-			$value = $decoded;
-		}
-		else {
-			$value = trim($value, "\"'");
-		}
-
-		$tokens = array_map('trim', explode(',', strtolower($value)));
-		foreach ($tokens as $token) {
-			if ($token === '') {
-				continue;
-			}
-			if ($token === 'json-only') {
-				$config['jsonOnly'] = true;
-				$config['initialMode'] = 'json';
-				continue;
-			}
-			if (strpos($token, 'initial:') === 0) {
-				$mode = trim(substr($token, strlen('initial:')));
-				if ($mode === 'json') {
-					$config['initialMode'] = 'json';
-				}
-				if ($mode === 'raw') {
-					$config['initialMode'] = 'raw';
-				}
-			}
-			if (strpos($token, 'height:') === 0) {
-				$height = trim(substr($token, strlen('height:')));
-				if (ctype_digit($height) && (int)$height > 0) {
-					$config['height'] = (int)$height;
-				}
-			}
-			if (strpos($token, 'format:') === 0) {
-				$format = trim(substr($token, strlen('format:')));
-				if (in_array($format, ['pretty', 'compact'], true)) {
-					$config['format'] = $format;
-				}
-			}
-			if (strpos($token, 'indent:') === 0) {
-				$indent = trim(substr($token, strlen('indent:')));
-				if ($indent === 'tab') {
-					$config['indent'] = 'tab';
-				}
-				if (ctype_digit($indent) && (int)$indent > 0 && (int)$indent <= 8) {
-					$config['indent'] = (int)$indent;
-				}
-			}
-		}
-
-		if ($config['jsonOnly']) {
-			$config['initialMode'] = 'json';
-		}
-		return $config;
-	}
-
-	/**
-	 * Parses generic Ace text enhancement parameters.
+	 * Parses generic text enhancement parameters.
 	 *
 	 * @param mixed  $params Raw action-tag parameter value.
-	 * @param string $mode   Ace language mode key.
+	 * @param string $mode   Enhancement mode key.
 	 * @return array
 	 */
-	private function parseAceTextParams($params, $mode)
+	private function parseActionTagParams($params, $mode)
 	{
 		$config = array(
 			'initialMode' => 'raw',
@@ -637,13 +436,8 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			'indent' => 2,
 			'mode' => $mode,
 			'label' => strtoupper($mode),
+			'scope' => 'form',
 		);
-		if ($mode === 'text') {
-			$config['label'] = 'Text';
-		}
-		if ($mode === 'r') {
-			$config['label'] = 'R';
-		}
 
 		$value = trim((string)$params);
 		if ($value === '') {
@@ -653,8 +447,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 		$decoded = json_decode($value, true);
 		if (is_string($decoded)) {
 			$value = $decoded;
-		}
-		else {
+		} else {
 			$value = trim($value, "\"'");
 		}
 
@@ -663,11 +456,13 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			if ($token === '') {
 				continue;
 			}
+			// Editor Only
 			if ($token === $mode . '-only' || $token === 'editor-only') {
 				$config['editorOnly'] = true;
 				$config['initialMode'] = $mode;
 				continue;
 			}
+			// Initial
 			if (strpos($token, 'initial:') === 0) {
 				$initial_mode = trim(substr($token, strlen('initial:')));
 				if ($initial_mode === $mode || $initial_mode === 'editor') {
@@ -676,26 +471,47 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 				if ($initial_mode === 'raw') {
 					$config['initialMode'] = 'raw';
 				}
+				if ($initial_mode === 'html' && $mode === 'markdown') {
+					$config['initialMode'] = 'html';
+				}
+				continue;
 			}
+			// Height
 			if (strpos($token, 'height:') === 0) {
 				$height = trim(substr($token, strlen('height:')));
 				if (ctype_digit($height) && (int)$height > 0) {
 					$config['height'] = (int)$height;
 				}
+				continue;
 			}
-			if (in_array($mode, ['css', 'xml'], true) && strpos($token, 'format:') === 0) {
-				$format = trim(substr($token, strlen('format:')));
-				if (in_array($format, ['pretty', 'compact'], true)) {
-					$config['format'] = $format;
+			// Scope
+			if (strpos($token, 'scope:') === 0) {
+				$scope = trim(substr($token, strlen('scope:')));
+				if (in_array($scope, ['form', 'survey', 'all'], true)) {
+					$config['scope'] = $scope;
 				}
+				continue;
 			}
-			if (in_array($mode, ['css', 'xml'], true) && strpos($token, 'indent:') === 0) {
-				$indent = trim(substr($token, strlen('indent:')));
-				if ($indent === 'tab') {
-					$config['indent'] = 'tab';
+			// CSS-, JSON-, XML-specific 
+			if (in_array($mode, ['css', 'json', 'xml'], true)) {
+				// Format
+				if (strpos($token, 'format:') === 0) {
+					$format = trim(substr($token, strlen('format:')));
+					if (in_array($format, ['pretty', 'compact'], true)) {
+						$config['format'] = $format;
+					}
+					continue;
 				}
-				if (ctype_digit($indent) && (int)$indent > 0 && (int)$indent <= 8) {
-					$config['indent'] = (int)$indent;
+				// Indent
+				if (strpos($token, 'indent:') === 0) {
+					$indent = trim(substr($token, strlen('indent:')));
+					if ($indent === 'tab') {
+						$config['indent'] = 'tab';
+					}
+					if (ctype_digit($indent) && (int)$indent > 0 && (int)$indent <= 8) {
+						$config['indent'] = (int)$indent;
+					}
+					continue;
 				}
 			}
 		}
@@ -704,38 +520,6 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			$config['initialMode'] = $mode;
 		}
 		return $config;
-	}
-
-	/**
-	 * Returns data dictionary rows keyed by field name.
-	 *
-	 * @param string $instrument Current instrument name.
-	 * @param array  $context    Context for evaluating @IF action tags.
-	 * @return array
-	 */
-	private function getMetadataByField($instrument, $context)
-	{
-		$metadata_json = \REDCap::getDataDictionary('json', false, null, $instrument);
-		$metadata_rows = json_decode($metadata_json, true);
-		$metadata_by_field = array();
-		if (!is_array($metadata_rows)) {
-			return $metadata_by_field;
-		}
-
-		foreach ($metadata_rows as $metadata) {
-			$field_name = $metadata['field_name'] ?? '';
-			if ($field_name === '') {
-				continue;
-			}
-			$field_annotation = $metadata['field_annotation'] ?? '';
-			if (is_array($context) && strpos($field_annotation, "@IF") !== false) {
-				$field_annotation = \Form::replaceIfActionTag($field_annotation, $context['project_id'] ?? null, $context['record'] ?? null, $context['event_id'] ?? null, $context['instrument'] ?? null, $context['instance'] ?? 1);
-				$metadata['field_annotation'] = $field_annotation;
-			}
-			$metadata_by_field[$field_name] = $metadata;
-		}
-
-		return $metadata_by_field;
 	}
 
 	/**
@@ -754,10 +538,10 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 		}
 		return false;
 	}
-
 }
 
-spl_autoload_register(function ($class) {
+spl_autoload_register(
+	function ($class) {
 		$namespace = __NAMESPACE__ . '\\';
 		$namespace_position = strpos($class, $namespace);
 		if ($namespace_position !== 0) {

@@ -1,21 +1,16 @@
 # Enhanced Text Fields
 
-A REDCap External Module that enhances REDCap text fields with editing,
-validation, formatting, and preview tools for text-based content types.
+A REDCap External Module that enhances REDCap text fields with editing, validation, formatting, and preview tools for text-based content types.
 
 ## Action Tags
 
 - `@ENHANCED-TEXT-PLAIN` adds a plain text Ace editor. It supports Notes fields.
-- `@ENHANCED-TEXT-JSON` adds a JSON editor with validation and layout
-  normalization. It supports text and Notes fields.
-- `@ENHANCED-TEXT-MARKDOWN` adds Raw, Markdown editor, and rendered HTML preview
-  modes. It supports Notes fields.
-- `@ENHANCED-TEXT-CSS` adds a CSS editor with layout normalization. It supports
-  text and Notes fields.
+- `@ENHANCED-TEXT-JSON` adds a JSON editor with validation and layout normalization. It supports text and Notes fields.
+- `@ENHANCED-TEXT-MARKDOWN` adds Raw, Markdown editor, and rendered HTML preview modes. It supports Notes fields.
+- `@ENHANCED-TEXT-CSS` adds a CSS editor with layout normalization. It supports text and Notes fields.
 - `@ENHANCED-TEXT-INI` adds an INI editor. It supports Notes fields.
 - `@ENHANCED-TEXT-R` adds an R editor. It supports Notes fields.
-- `@ENHANCED-TEXT-XML` adds an XML editor with validation and layout
-  normalization. It supports text and Notes fields.
+- `@ENHANCED-TEXT-XML` adds an XML editor with validation and layout normalization. It supports text and Notes fields.
 - `@ENHANCED-TEXT-YAML` adds a YAML editor. It supports Notes fields.
 
 Examples:
@@ -28,13 +23,11 @@ Examples:
 
 ## Parameters
 
-Action-tag parameters are optional. When provided, use a quoted,
-comma-separated list such as `@ENHANCED-TEXT-JSON="initial:json, height:240"`.
+Action-tag parameters are optional. When provided, use a double-quoted,
+comma-separated list such as `@ENHANCED-TEXT-JSON="initial:json, height:240"`. 
+Note: No quotes or single quotes are not allowed.
 
-- `initial:*` sets the first visible mode. Use `initial:raw` for the REDCap raw
-  field. Use `initial:json`, `initial:css`, `initial:xml`, `initial:ini`,
-  `initial:r`, `initial:yaml`, or `initial:text` for the corresponding editor.
-  Markdown also supports `initial:md` and `initial:html`.
+- `initial:*` sets the first visible mode. Use `initial:raw` for the REDCap raw field. Use `initial:markdown`, `initial:json`, `initial:css`, `initial:xml`, `initial:ini`, `initial:r`, `initial:yaml`, or `initial:text` for the corresponding editor. Markdown also supports `initial:html` for its rendered HTML view.
 - `height:200` sets the initial editor or preview height in pixels.
 - `format:pretty` stores normalized JSON, CSS, or XML with line breaks and
   indentation when the underlying field supports newlines.
@@ -45,9 +38,9 @@ comma-separated list such as `@ENHANCED-TEXT-JSON="initial:json, height:240"`.
 - `scope:form`, `scope:survey`, or `scope:all` controls where the enhanced
   control is injected. `scope:form` is the default, so action tags do not affect
   surveys unless `scope:survey` or `scope:all` is specified.
-- `json-only`, `md-only`, `css-only`, `xml-only`, `text-only`, `ini-only`,
+- `json-only`, `markdown-only`, `css-only`, `xml-only`, `text-only`, `ini-only`,
   `r-only`, or `yaml-only` opens the enhanced mode and hides the Raw tab.
-  `editor-only` is accepted as a generic alias for the non-Markdown Ace editor
+  `editor-only` is accepted as a generic alias for the respective editor
   modes.
 
 ## Normalization
