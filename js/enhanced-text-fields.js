@@ -13,12 +13,12 @@
 	const ACE_THEME_LIGHT = 'github_light_default';
 	const ACE_THEME_DARK = 'github_dark';
 	const ACE_TEXT_MODES = {
-		text: { label: 'Text', normalizes: false },
-		ini: { label: 'INI', normalizes: false },
-		css: { label: 'CSS', normalizes: true },
-		r: { label: 'R', normalizes: false },
-		xml: { label: 'XML', normalizes: true },
-		yaml: { label: 'YAML', normalizes: false },
+		text: { normalizes: false },
+		ini: { normalizes: false },
+		css: { normalizes: true },
+		r: { normalizes: false },
+		xml: { normalizes: true },
+		yaml: { normalizes: false },
 	};
 	const LAYOUT_NORMAL = 'normal';
 	const LAYOUT_EXPANDED = 'expanded';
@@ -700,6 +700,7 @@
 		}, 100));
 
 		setMarkdownMode(controller, controller.mode);
+		LOGGER.log('Controller created', controller);
 		return controller;
 	}
 
@@ -1978,6 +1979,7 @@
 
 		initTextViewerResizeHandles(controller);
 		setJsonMode(controller, controller.mode);
+		LOGGER.log('Controller created', controller);
 		return controller;
 	}
 
@@ -2221,7 +2223,7 @@
 	 * @returns {object}
 	 */
 	function createAceTextController($control, field, mode) {
-		const modeMeta = ACE_TEXT_MODES[mode] || { label: mode.toUpperCase(), normalizes: false };
+		const modeMeta = { normalizes: ACE_TEXT_MODES[mode], label: state.config.labels[mode] || mode.toUpperCase() };
 		const fieldName = field.name;
 		const modeConfig = field[mode] || {};
 		const editorOnly = !!modeConfig.editorOnly;
@@ -2403,6 +2405,7 @@
 
 		initTextViewerResizeHandles(controller);
 		setAceTextMode(controller, controller.mode);
+		LOGGER.log('Controller created', controller);
 		return controller;
 	}
 

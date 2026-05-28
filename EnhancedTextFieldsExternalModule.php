@@ -132,6 +132,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			'jsmoName' => $this->getJavascriptModuleObjectName(),
 			'themePreferences' => $this->getThemePreferences($user_id),
 			'fields' => $enhanced_fields,
+			'labels' => $this->getModeLabels(),
 			'ace' => $this->getAceConfig(),
 		);
 		$config_json = json_encode($config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
@@ -362,14 +363,14 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 		};
 
 		$text_enhancements = array(
-			'text' => array('tag' => self::AT_ENHANCED_TEXT_PLAIN, 'labels' => ['Text'], 'allowTextField' => false),
-			'markdown' => array('tag' => self::AT_ENHANCED_TEXT_MARKDOWN, 'labels' => ['Markdown', 'HTML'], 'allowTextField' => false),
-			'json' => array('tag' => self::AT_ENHANCED_TEXT_JSON, 'labels' => ['JSON'], 'allowTextField' => true),
-			'css' => array('tag' => self::AT_ENHANCED_TEXT_CSS, 'labels' => ['CSS'], 'allowTextField' => true),
-			'ini' => array('tag' => self::AT_ENHANCED_TEXT_INI, 'labels' => ['INI'], 'allowTextField' => false),
-			'r' => array('tag' => self::AT_ENHANCED_TEXT_R, 'labels' => ['R'], 'allowTextField' => false),
-			'xml' => array('tag' => self::AT_ENHANCED_TEXT_XML, 'labels' => ['XML'], 'allowTextField' => true),
-			'yaml' => array('tag' => self::AT_ENHANCED_TEXT_YAML, 'labels' => ['YAML'], 'allowTextField' => false),
+			'text' => array('tag' => self::AT_ENHANCED_TEXT_PLAIN, 'allowTextField' => false),
+			'markdown' => array('tag' => self::AT_ENHANCED_TEXT_MARKDOWN, 'allowTextField' => false),
+			'json' => array('tag' => self::AT_ENHANCED_TEXT_JSON, 'allowTextField' => true),
+			'css' => array('tag' => self::AT_ENHANCED_TEXT_CSS, 'allowTextField' => true),
+			'ini' => array('tag' => self::AT_ENHANCED_TEXT_INI, 'allowTextField' => false),
+			'r' => array('tag' => self::AT_ENHANCED_TEXT_R, 'allowTextField' => false),
+			'xml' => array('tag' => self::AT_ENHANCED_TEXT_XML, 'allowTextField' => true),
+			'yaml' => array('tag' => self::AT_ENHANCED_TEXT_YAML, 'allowTextField' => false),
 		);
 		foreach ($text_enhancements as $mode => $enhancement) {
 			foreach ($actionTags[$enhancement['tag']] ?? [] as $fieldName => $tagInfo) {
@@ -419,6 +420,27 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 		return !$is_survey;
 	}
 
+
+	/**
+	 * Gets the mode labels.
+	 *
+	 * @return array 
+	 */
+	private function getModeLabels() {
+		return array(
+			'raw' => 'Raw',
+			'text' => 'Text',
+			'markdown' => 'Markdown',
+			'html' => 'HTML',
+			'json' => 'JSON',
+			'css' => 'CSS',
+			'ini' => 'INI',
+			'r' => 'R',
+			'xml' => 'XML',
+			'yaml' => 'YAML',
+		);
+	}
+
 	/**
 	 * Parses generic text enhancement parameters.
 	 *
@@ -435,7 +457,6 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			'format' => 'pretty',
 			'indent' => 2,
 			'mode' => $mode,
-			'label' => strtoupper($mode),
 			'scope' => 'form',
 		);
 
