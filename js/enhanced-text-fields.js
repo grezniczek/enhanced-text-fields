@@ -449,11 +449,12 @@
 			$collapseButton: $collapseButton,
 			initialHeight: initialHeight,
 		});
+		const initialMode = getMarkdownInitialMode($control, markdownConfig);
 		$.extend(controller, {
 			$viewerScroll: $viewerScroll,
 			$viewerContent: $viewerContent,
 			mdOnly: mdOnly,
-			mode: markdownConfig.initialMode === VIEW_HTML ? VIEW_HTML : (markdownConfig.initialMode === VIEW_MARKDOWN ? VIEW_MARKDOWN : VIEW_RAW),
+			mode: initialMode,
 			getActivePanel: function () { return getMarkdownActivePanel(controller); },
 			getPanelSet: function () { return controller.$viewer.add(controller.$editorViewer).add(controller.$rawPanel); },
 			getContentHeight: function () { return getMarkdownContentHeight(controller); },
@@ -521,6 +522,23 @@
 
 		setMarkdownMode(controller, controller.mode);
 		return controller;
+	}
+
+	/**
+	 * Returns the initial Markdown mode for a field.
+	 *
+	 * @param {jQuery} $control Textarea control.
+	 * @param {object} markdownConfig Markdown enhancement configuration.
+	 * @returns {string}
+	 */
+	function getMarkdownInitialMode($control, markdownConfig) {
+		if (markdownConfig.initialMode === VIEW_HTML) {
+			return String($control.val() || '').trim() === '' ? VIEW_RAW : VIEW_HTML;
+		}
+		if (markdownConfig.initialMode === VIEW_MARKDOWN) {
+			return VIEW_MARKDOWN;
+		}
+		return VIEW_RAW;
 	}
 
 	/**
