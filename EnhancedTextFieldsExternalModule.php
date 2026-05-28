@@ -378,15 +378,18 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 				if (!$this->shouldInjectForScope($params['scope'], $is_survey)) continue;
 				$fieldMetadata = $metadata[$fieldName] ?? null;
 				$allowedTypes = $enhancement['allowTextField'] ? ['text', 'textarea'] : ['textarea'];
+				$allowedTypes[] = 'file';
 				if (empty($fieldMetadata) || !in_array($fieldMetadata['element_type'] ?? '', $allowedTypes, true)) continue;
-				// Skip any text fields that have a validation
+				// Skip any text fields that have a validation or signatures
 				if ($fieldMetadata['element_type'] === 'text' && !empty($fieldMetadata['element_validation_type'])) continue;
+				if ($fieldMetadata['element_type'] === 'file' && !empty($fieldMetadata['element_validation_type'])) continue;
 				if (($fieldMetadata['element_type'] ?? '') === 'text') {
 					$params['format'] = 'compact';
 				}
 				if (!isset($viewerFields[$fieldName])) {
 					$viewerFields[$fieldName] = [
 						'name' => $fieldName,
+						'isFile' => $fieldMetadata['element_type'] === 'file',
 						'viewers' => [$mode],
 						'readonly' => $is_readonly($fieldName),
 						'rowConfig' => in_array($fieldMetadata['custom_alignment'] ?? '', ['LH', 'LV']) ? 'full' : 'split',
