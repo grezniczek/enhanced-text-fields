@@ -24,10 +24,16 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 	const AT_ENHANCED_TEXT_XML = "@ENHANCED-TEXT-XML";
 	const AT_ENHANCED_TEXT_YAML = "@ENHANCED-TEXT-YAML";
 
-	// Theme setting persistence
+	// AJAX actions
 	const AJAX_SAVE_THEME_PREFERENCE = 'save-theme-preference';
 	const AJAX_GET_FILE_CONTENT = 'get-file-content';
+
+	const DEFAULT_FILE_SIZE_LIMIT = 10 * 1024 * 1024; // 10 MB
+
+	// Theme setting persistence
 	const THEME_SETTING_PREFIX = 'theme-preference:';
+
+
 
 	#region Hooks
 
@@ -97,7 +103,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			case self::AJAX_SAVE_THEME_PREFERENCE:
 				return $this->saveThemePreference($payload, $user_id);
 			case self::AJAX_GET_FILE_CONTENT:
-				return $this->getFileContent($payload, $project_id, $user_id);
+				return $this->getFileContent($payload, $project_id, $user_id, $instrument, $survey_hash, $record);
 		}
 	}
 
@@ -306,11 +312,70 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 	 * @param mixed $payload Client payload.
 	 * @param int|string $project_id
 	 * @param string|null $user_id
+	 * @param string|null $user_id
+	 * @param string $instrument
+	 * @param string|null $survey_hash
+	 * @param string $record
 	 * @return string
 	 */
-	private function getFileContent($payload, $project_id, $user_id)
+	private function getFileContent($payload, $project_id, $user_id, $instrument, $survey_hash, $record)
 	{
-		return '"TEST"';
+		$docId = $payload['docId'];
+		$content = false;
+		$error = 'This file is not currently available for viewing.';
+		do {
+			// Validate hash
+			$docIdHash = $payload['docIdHash'];
+			$expectedHash = \Files::docIdHash($docId);
+			if ($docIdHash !== $expectedHash) break;
+
+			// Validate context
+			$validContext = (!empty($user_id) && empty($survey_hash)) || ($user_id == null && !empty($survey_hash));
+			if (!$validContext) break;
+
+			// Validate field context
+			$Proj = new \Project($project_id);
+			$fieldName = $payload['fieldName'];
+			if (!array_key_exists($fieldName, $Proj->forms[$instrument]['fields'])) break;
+
+			// Validate survey
+			if (!empty($survey_hash) && empty($Proj->forms[$instrument]['survey_id'])) break;
+	
+			// Validate file attributes
+			$fileInfo = \Files::getEdocInfo($docId, $project_id, false);
+			if ($fileInfo['doc_name'] !== $payload['filename']) break;
+			$maxFileSize = $this->getMaxAllowedFileSize($project_id);
+			if ($maxFileSize > 0 && (intval($fileInfo['doc_size']) > $maxFileSize)) {
+				$error = "The file size exceeds maximum allowed size of {$maxFileSize} bytes.";
+				break;
+			}
+
+			// Validate record DAG
+			if (!empty($record) && !empty($user_id)) {
+				if (!\Records::recordBelongsToUsersDAG($project_id, $record)) {
+					$error = "The record associated with this file does not belong to your data access group.";
+					break;
+				}
+			}
+
+			// All valid, get content
+			list ($_, $_, $content) = \Files::getEdocContentsAttributes($docId);
+
+		} while (false);
+
+		return ($content === false) ? [
+			'ok' => false,
+			'error' => $error,
+		] : [
+			'ok' => true,
+			'content' => $content,
+		];
+	}
+	
+	// TODO: Add file size setting to config.json, add PHPDoc, support k/kb/m/mb
+	private function getMaxAllowedFileSize($project_id) {
+		$maxFileSize = intval($this->framework->getProjectSetting('max-file-size', $project_id) ?? 0);
+		return $maxFileSize === 0 ? self::DEFAULT_FILE_SIZE_LIMIT : $maxFileSize;
 	}
 
 
