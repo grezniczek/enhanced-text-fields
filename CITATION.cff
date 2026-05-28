@@ -1,4 +1,38 @@
-cff-version: 1.2.0
-title: Enhanced Text Fields (REDCap External Module)
+cff-version: "1.2.0"
+message: "If you use Enhanced Text Fields, please cite it using this metadata."
+type: software
+title: "Enhanced Text Fields: A REDCap External Module for structured text editing and preview"
+abstract: "Enhanced Text Fields is a REDCap External Module that enhances text boxes, Notes fields, and file upload fields with Ace-backed editors and viewers for JSON, Markdown, CSS, XML, YAML, INI, R, and plain text."
+authors:
+  - family-names: "Rezniczek"
+    given-names: "Günther"
+    email: "guenther.rezniczek@rub.de"
+    affiliation: "St. Elisabethgruppe GmbH - Marien Hospital Herne | Klinikum der Ruhr-Universität Bochum"
+keywords:
+  - "REDCap"
+  - "REDCap External Module"
+  - "structured text"
+  - "JSON"
+  - "Markdown"
+  - "data entry"
+license: "MIT"
+version: "unreleased"
 
-// TODO: Complete citation file
+# Release/DOI preparation:
+# date-released: "YYYY-MM-DD"
+# doi: "10.xxxx/zenodo.xxxxxxx"
+# repository-code: "https://github.com/OWNER/REPOSITORY"
+# identifiers:
+#   - type: doi
+#     value: "10.xxxx/zenodo.xxxxxxx"
+#     description: "Archived release DOI"
+
+preferred-citation:
+  type: software
+  title: "Enhanced Text Fields: A REDCap External Module for structured text editing and preview"
+  authors:
+    - family-names: "Rezniczek"
+      given-names: "Günther"
+      email: "guenther.rezniczek@rub.de"
+      affiliation: "St. Elisabethgruppe GmbH - Marien Hospital Herne | Klinikum der Ruhr-Universität Bochum"
+  version: "unreleased"
