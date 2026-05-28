@@ -117,11 +117,11 @@
 }
 
 .rc-text-viewer-edit-state--readonly .rc-text-viewer-edit-state__pencil {
-	color: #b00020;
+	color: #979ca5;
 }
 
 .rc-text-viewer-edit-state--readonly .rc-text-viewer-edit-state__slash {
-	color: #6b7280;
+	color: #b00020;
 }
 
 .rc-text-viewer__fallback {
