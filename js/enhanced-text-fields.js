@@ -1784,6 +1784,9 @@
 			return;
 		}
 		const storageFormatted = formatJson(raw, controller.storageFormat);
+		if ((controller.$control.val() || '') === storageFormatted.text) {
+			return;
+		}
 		controller.skipNextControlRender = true;
 		controller.updatingControl = true;
 		controller.$control.val(storageFormatted.text).trigger('change');
