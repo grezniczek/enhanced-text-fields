@@ -25,6 +25,7 @@
 	const state = {
 		config: null,
 		acePromise: null,
+		aceConfigured: false,
 		editors: {},
 		markdownControllers: {},
 		jsonControllers: {},
@@ -710,19 +711,14 @@
 	 * @returns {void}
 	 */
 	function initMarkdownEditor(controller, editorId, field) {
-		ensureScript(state.config.urls.ace, function () {
-			return !!global.ace;
-		}).then(function () {
-			const editor = global.ace.edit(editorId);
+		ensureAce().then(function () {
+			const editor = createAceEditor(editorId, {
+				mode: VIEW_MARKDOWN,
+				readOnly: !!field.readonly,
+				useWorker: false,
+			});
 			controller.editor = editor;
 			state.editors[`${controller.fieldName}-markdown`] = editor;
-			editor.setTheme('ace/theme/textmate');
-			editor.setReadOnly(!!field.readonly);
-			editor.setShowPrintMargin(false);
-			editor.setHighlightActiveLine(false);
-			editor.session.setUseWorker(false);
-			editor.renderer.setShowGutter(true);
-			editor.renderer.setScrollMargin(6, 6, 0, 0);
 			editor.setValue(controller.$control.val() || '', -1);
 			editor.session.on('change', debounce(function () {
 				if (editor.getReadOnly()) {
@@ -1263,6 +1259,123 @@
 	}
 
 	/**
+	 * Ensures the bundled Ace editor is loaded and configured.
+	 *
+	 * @returns {Promise}
+	 */
+	function ensureAce() {
+		const aceConfig = getAceConfig();
+		const scriptUrl = aceConfig.script || (state.config.urls && state.config.urls.ace);
+		return ensureScript(scriptUrl, function () {
+			return !!global.ace;
+		}).then(function () {
+			configureAce(aceConfig);
+			return global.ace;
+		});
+	}
+
+	/**
+	 * Returns Ace loader and module configuration.
+	 *
+	 * @returns {object}
+	 */
+	function getAceConfig() {
+		return state.config.ace || {};
+	}
+
+	/**
+	 * Registers bundled Ace module URLs.
+	 *
+	 * @param {object} aceConfig Ace loader and module configuration.
+	 * @returns {void}
+	 */
+	function configureAce(aceConfig) {
+		if (state.aceConfigured || !global.ace || !global.ace.config) {
+			return;
+		}
+
+		registerAceModuleUrls(aceConfig.modes || {});
+		registerAceModuleUrls(aceConfig.themes || {});
+		Object.keys(aceConfig.workers || {}).forEach(function (module) {
+			global.ace.config.setModuleUrl(module, aceConfig.workers[module]);
+		});
+		state.aceConfigured = true;
+	}
+
+	/**
+	 * Registers a keyed Ace module descriptor map.
+	 *
+	 * @param {object} modules Ace module descriptor map.
+	 * @returns {void}
+	 */
+	function registerAceModuleUrls(modules) {
+		Object.keys(modules || {}).forEach(function (key) {
+			const moduleConfig = modules[key] || {};
+			if (moduleConfig.module && moduleConfig.url) {
+				global.ace.config.setModuleUrl(moduleConfig.module, moduleConfig.url);
+			}
+		});
+	}
+
+	/**
+	 * Creates an Ace editor with module-local defaults.
+	 *
+	 * @param {string} editorId Ace editor element id.
+	 * @param {object} options Editor options.
+	 * @returns {object}
+	 */
+	function createAceEditor(editorId, options) {
+		const aceConfig = getAceConfig();
+		const modeConfig = getAceModeConfig(options.mode);
+		const themeConfig = getAceThemeConfig(options.theme || aceConfig.theme);
+		const editor = global.ace.edit(editorId);
+		editor.setTheme(themeConfig.module);
+		if (modeConfig.module) {
+			editor.session.setMode(modeConfig.module);
+		}
+		editor.setReadOnly(!!options.readOnly);
+		editor.setShowPrintMargin(false);
+		editor.setHighlightActiveLine(false);
+		editor.session.setUseWorker(!!options.useWorker && !!aceConfig.useWorker);
+		editor.renderer.setShowGutter(true);
+		editor.renderer.setScrollMargin(6, 6, 0, 0);
+		return editor;
+	}
+
+	/**
+	 * Returns the configured Ace mode descriptor for a language key.
+	 *
+	 * @param {string} mode Language mode key.
+	 * @returns {object}
+	 */
+	function getAceModeConfig(mode) {
+		const modes = getAceConfig().modes || {};
+		const modeConfig = modes[mode] || {};
+		return $.extend({
+			module: mode ? 'ace/mode/' + mode : null,
+			url: null,
+			worker: null,
+		}, modeConfig);
+	}
+
+	/**
+	 * Returns the configured Ace theme descriptor.
+	 *
+	 * @param {string} theme Theme key or Ace theme module id.
+	 * @returns {object}
+	 */
+	function getAceThemeConfig(theme) {
+		const themeName = theme || 'github_light_default';
+		const themes = getAceConfig().themes || {};
+		const themeConfig = themes[themeName] || {};
+		return $.extend({
+			module: themeName.indexOf('ace/theme/') === 0 ? themeName : 'ace/theme/' + themeName,
+			url: null,
+			worker: null,
+		}, themeConfig);
+	}
+
+	/**
 	 * Ensures a script URL is available.
 	 *
 	 * @param {string} url Script URL.
@@ -1277,6 +1390,10 @@
 			return state.acePromise;
 		}
 		state.acePromise = new Promise(function (resolve, reject) {
+			if (!url) {
+				reject(new Error('Script URL is missing'));
+				return;
+			}
 			const script = document.createElement('script');
 			script.src = url;
 			script.type = 'text/javascript';
@@ -1472,19 +1589,14 @@
 			}
 		}, 100));
 
-		ensureScript(state.config.urls.ace, function () {
-			return !!global.ace;
-		}).then(function () {
-			const editor = global.ace.edit(editorId);
+		ensureAce().then(function () {
+			const editor = createAceEditor(editorId, {
+				mode: VIEW_JSON,
+				readOnly: !!field.readonly,
+				useWorker: false,
+			});
 			controller.editor = editor;
 			state.editors[fieldName] = editor;
-			editor.setTheme('ace/theme/textmate');
-			editor.setReadOnly(!!field.readonly);
-			editor.setShowPrintMargin(false);
-			editor.setHighlightActiveLine(false);
-			editor.session.setUseWorker(false);
-			editor.renderer.setShowGutter(true);
-			editor.renderer.setScrollMargin(6, 6, 0, 0);
 			editor.session.on('change', debounce(function () {
 				syncJsonFromEditor(controller);
 			}, 100));
@@ -1757,6 +1869,14 @@
 		state.config = $.extend(true, {
 			debug: false,
 			fields: [],
+			ace: {
+				script: null,
+				theme: 'github_light_default',
+				useWorker: false,
+				modes: {},
+				themes: {},
+				workers: {},
+			},
 			urls: {
 				ace: null,
 			},

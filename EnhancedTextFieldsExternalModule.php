@@ -122,9 +122,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			'debug' => $this->js_debug,
 			'isSurvey' => $is_survey,
 			'fields' => $enhanced_fields,
-			'urls' => array(
-				'ace' => $this->getRedcapResourceUrl('Resources/js/Libraries/ace.js'),
-			),
+			'ace' => $this->getAceConfig(),
 		);
 		$config_json = json_encode($config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
 
@@ -143,6 +141,72 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			DE_RUB_SEG_EnhancedTextFieldsEM.init(<?= $config_json ?>);
 		</script>
 		<?php
+	}
+
+
+	/**
+	 * Builds client-side Ace loader configuration from the bundled Ace assets.
+	 *
+	 * @return array
+	 */
+	private function getAceConfig()
+	{
+		/** @var string $ace_path Bundled Ace distribution path. */
+		$ace_path = 'js/ace/src-noconflict/';
+		return array(
+			'script' => $this->getModuleResourceUrl($ace_path . 'ace.js'),
+			'theme' => 'github_light_default',
+			'useWorker' => false,
+			'modes' => array(
+				'json' => $this->getAceModuleConfig('ace/mode/json', $ace_path . 'mode-json.js', 'ace/mode/json_worker'),
+				'markdown' => $this->getAceModuleConfig('ace/mode/markdown', $ace_path . 'mode-markdown.js', null),
+				'ini' => $this->getAceModuleConfig('ace/mode/ini', $ace_path . 'mode-ini.js', null),
+				'css' => $this->getAceModuleConfig('ace/mode/css', $ace_path . 'mode-css.js', 'ace/mode/css_worker'),
+				'r' => $this->getAceModuleConfig('ace/mode/r', $ace_path . 'mode-r.js', null),
+				'xml' => $this->getAceModuleConfig('ace/mode/xml', $ace_path . 'mode-xml.js', 'ace/mode/xml_worker'),
+				'yaml' => $this->getAceModuleConfig('ace/mode/yaml', $ace_path . 'mode-yaml.js', 'ace/mode/yaml_worker'),
+			),
+			'themes' => array(
+				'github_light_default' => $this->getAceModuleConfig('ace/theme/github_light_default', $ace_path . 'theme-github_light_default.js', null),
+				'github_dark' => $this->getAceModuleConfig('ace/theme/github_dark', $ace_path . 'theme-github_dark.js', null),
+			),
+			'workers' => array(
+				'ace/mode/css_worker' => $this->getModuleResourceUrl($ace_path . 'worker-css.js'),
+				'ace/mode/html_worker' => $this->getModuleResourceUrl($ace_path . 'worker-html.js'),
+				'ace/mode/javascript_worker' => $this->getModuleResourceUrl($ace_path . 'worker-javascript.js'),
+				'ace/mode/json_worker' => $this->getModuleResourceUrl($ace_path . 'worker-json.js'),
+				'ace/mode/xml_worker' => $this->getModuleResourceUrl($ace_path . 'worker-xml.js'),
+				'ace/mode/yaml_worker' => $this->getModuleResourceUrl($ace_path . 'worker-yaml.js'),
+			),
+		);
+	}
+
+	/**
+	 * Builds an Ace module descriptor.
+	 *
+	 * @param string      $module Ace module id.
+	 * @param string      $file   Module file path relative to this module.
+	 * @param string|null $worker Optional Ace worker module id.
+	 * @return array
+	 */
+	private function getAceModuleConfig($module, $file, $worker)
+	{
+		return array(
+			'module' => $module,
+			'url' => $this->getModuleResourceUrl($file),
+			'worker' => $worker,
+		);
+	}
+
+	/**
+	 * Returns a URL for a bundled module resource.
+	 *
+	 * @param string $resource_path Path relative to this module.
+	 * @return string
+	 */
+	private function getModuleResourceUrl($resource_path)
+	{
+		return $this->framework->getUrl($resource_path);
 	}
 
 
@@ -417,16 +481,4 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 		return false;
 	}
 
-
-	/**
-	 * Returns a URL for a REDCap core resource.
-	 *
-	 * @param string $resource_path Path relative to REDCap's web root.
-	 * @return string
-	 */
-	private function getRedcapResourceUrl($resource_path)
-	{
-		$webroot = defined('APP_PATH_WEBROOT') ? APP_PATH_WEBROOT : '';
-		return $webroot . $resource_path;
-	}
 }
