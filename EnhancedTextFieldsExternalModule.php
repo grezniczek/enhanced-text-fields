@@ -24,6 +24,10 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 	const AT_ENHANCED_TEXT_XML = "@ENHANCED-TEXT-XML";
 	const AT_ENHANCED_TEXT_YAML = "@ENHANCED-TEXT-YAML";
 
+	// Theme setting persistence
+	const AJAX_SAVE_THEME_PREFERENCE = 'save-theme-preference';
+	const THEME_SETTING_PREFIX = 'theme-preference:';
+
 	#region Hooks
 
 	/**
@@ -39,8 +43,14 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 	 */
 	function redcap_data_entry_form_top($project_id, $record, $instrument, $event_id, $group_id, $repeat_instance)
 	{
-		$Proj = $GLOBALS['Proj'];
-		$this->injectEnhancedFields($Proj, $record, $instrument, $event_id, $repeat_instance, false);
+		try {
+			$user_id = $this->framework->getUser()->getUsername();
+			$Proj = $GLOBALS['Proj'];
+			$this->injectEnhancedFields($Proj, $record, $instrument, $event_id, $repeat_instance, $user_id);
+		}
+		catch (\Throwable $e) {
+			// Ignore - if there is no user, we should not do anything
+		}
 	}
 
 	/**
@@ -59,7 +69,34 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 	function redcap_survey_page_top($project_id, $record, $instrument, $event_id, $group_id, $survey_hash, $response_id, $repeat_instance)
 	{
 		$Proj = $GLOBALS['Proj'];
-		$this->injectEnhancedFields($Proj, $record, $instrument, $event_id, $repeat_instance, true);
+		$this->injectEnhancedFields($Proj, $record, $instrument, $event_id, $repeat_instance, null);
+	}
+
+	/**
+	 * Handles authenticated ajax requests from the JavaScript Module Object.
+	 *
+	 * @param string      $action             Ajax action name.
+	 * @param mixed       $payload            Ajax payload sent by the client.
+	 * @param int|null    $project_id         REDCap project id.
+	 * @param string|null $record             Current record id.
+	 * @param string|null $instrument         Current instrument name.
+	 * @param int|null    $event_id           Current event id.
+	 * @param int|null    $repeat_instance    Current repeat instance.
+	 * @param string|null $survey_hash        Current survey hash.
+	 * @param int|null    $response_id        Current survey response id.
+	 * @param string|null $survey_queue_hash  Current survey queue hash.
+	 * @param string|null $page               Current page.
+	 * @param string|null $page_full          Current full page path.
+	 * @param string|null $user_id            Current REDCap username.
+	 * @param int|null    $group_id           Current DAG id.
+	 * @return array
+	 */
+	function redcap_module_ajax($action, $payload, $project_id, $record, $instrument, $event_id, $repeat_instance, $survey_hash, $response_id, $survey_queue_hash, $page, $page_full, $user_id, $group_id)
+	{
+		switch ($action) {
+			case self::AJAX_SAVE_THEME_PREFERENCE:
+				return $this->saveThemePreference($payload, $user_id);
+		}
 	}
 
 	#endregion
@@ -72,11 +109,12 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 	 * @param string      $instrument      Current instrument name.
 	 * @param int|null    $event_id        Current event id.
 	 * @param int|null    $repeat_instance Current repeat instance.
-	 * @param bool        $is_survey       Whether the current page is a survey page.
+	 * @param bool        $user_id         The current user (or null on survey pages).
 	 * @return void
 	 */
-	private function injectEnhancedFields($Proj, $record, $instrument, $event_id, $repeat_instance, $is_survey)
+	private function injectEnhancedFields($Proj, $record, $instrument, $event_id, $repeat_instance, $user_id)
 	{
+		$is_survey = $user_id === null;
 		$enhanced_fields = $this->getEnhancedFields($Proj, $record, $instrument, $event_id, $repeat_instance, $is_survey);
 		if (empty($enhanced_fields)) {
 			return;
@@ -91,6 +129,8 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 		$config = array(
 			'debug' => $this->js_debug,
 			'isSurvey' => $is_survey,
+			'jsmoName' => $this->getJavascriptModuleObjectName(),
+			'themePreferences' => $this->getThemePreferences($user_id),
 			'fields' => $enhanced_fields,
 			'ace' => $this->getAceConfig(),
 		);
@@ -106,6 +146,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 		}
 		$inject->js('js/ConsoleDebugLogger.js');
 		$inject->js('js/enhanced-text-fields.js');
+		$this->initializeJavascriptModuleObject();
 		?>
 		<script type="text/javascript">
 			DE_RUB_SEG_EnhancedTextFieldsEM.init(<?= $config_json ?>);
@@ -121,7 +162,6 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 	 */
 	private function getAceConfig()
 	{
-		/** @var string $ace_path Bundled Ace distribution path. */
 		$ace_path = 'js/ace/src-noconflict/';
 		return array(
 			'script' => $this->getModuleResourceUrl($ace_path . 'ace.js'),
@@ -178,6 +218,76 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 	private function getModuleResourceUrl($resource_path)
 	{
 		return $this->framework->getUrl($resource_path);
+	}
+
+	/**
+	 * Returns globally persisted theme preferences for the current authenticated user.
+	 *
+	 * @param string $user_id
+	 * @return array
+	 */
+	private function getThemePreferences($user_id)
+	{
+		$preferences = array();
+		foreach ($this->getThemePreferenceTypes() as $type) {
+			$preferences[$type] = 'light';
+		}
+		if (empty($user_id)) {
+			return $preferences;
+		}
+		foreach (array_keys($preferences) as $type) {
+			$theme = $this->getSystemSetting($this->getThemePreferenceKey($user_id, $type));
+			if (in_array($theme, array('light', 'dark'), true)) {
+				$preferences[$type] = $theme;
+			}
+		}
+		return $preferences;
+	}
+
+	/**
+	 * Saves a globally persisted theme preference for one authenticated user and enhancement type.
+	 *
+	 * @param array $payload AJAX payload.
+	 * @param string $user_id REDCap username.
+	 * @return void
+	 */
+	private function saveThemePreference($payload, $user_id)
+	{
+		if (!is_array($payload) || !isset($payload['type']) || !isset($payload['theme'])) {
+			return array('ok' => false, 'error' => 'Missing payload.');
+		}
+		$type = isset($payload['type']) ? (string)$payload['type'] : '';
+		if (!in_array($type, $this->getThemePreferenceTypes(), true)) {
+			return array('ok' => false, 'error' => 'Unsupported type.');
+		}
+		$theme = isset($payload['theme']) ? (string)$payload['theme'] : '';
+		if (!in_array($theme, array('light', 'dark'), true)) {
+			return array('ok' => false, 'error' => 'Unsupported theme.');
+		}
+		$this->setSystemSetting($this->getThemePreferenceKey($user_id, $type), $theme);
+		return array('ok' => true);
+	}
+
+	/**
+	 * Builds a global setting key for a user's theme preference.
+	 *
+	 * @param string $user_id REDCap username.
+	 * @param string $type    Enhancement type.
+	 * @return string
+	 */
+	private function getThemePreferenceKey($user_id, $type)
+	{
+		return self::THEME_SETTING_PREFIX . sha1((string)$user_id) . ':' . $type;
+	}
+
+	/**
+	 * Returns supported enhancement type keys for theme persistence.
+	 *
+	 * @return array
+	 */
+	private function getThemePreferenceTypes()
+	{
+		return array('text', 'json', 'markdown', 'css', 'ini', 'r', 'xml', 'yaml');
 	}
 
 
@@ -587,25 +697,13 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 
 }
 
-spl_autoload_register(
-	/**
-	 * Loads classes that belong to this module namespace from the classes folder.
-	 *
-	 * @param string $class Fully qualified class name requested by PHP.
-	 * @return void
-	 */
-	function ($class) {
-		/** @var string $namespace Module namespace prefix. */
+spl_autoload_register(function ($class) {
 		$namespace = __NAMESPACE__ . '\\';
-		/** @var int|false $namespace_position Prefix position in the requested class. */
 		$namespace_position = strpos($class, $namespace);
 		if ($namespace_position !== 0) {
 			return;
 		}
-
-		/** @var string $relative_class Class name relative to this module namespace. */
 		$relative_class = substr($class, strlen($namespace));
-		/** @var string $class_file Absolute class file path. */
 		$class_file = __DIR__ . '/classes/' . str_replace('\\', '/', $relative_class) . '.php';
 		if (is_readable($class_file)) {
 			require_once $class_file;

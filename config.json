@@ -3,6 +3,9 @@
 	"namespace": "DE\\RUB\\SEG\\EnhancedTextFieldsExternalModule",
 	"description": "Enhances REDCap text fields with JSON and Markdown editing, validation, formatting, and preview tools.",
 	"documentation": "README.md",
+	"auth-ajax-actions": [
+		"save-theme-preference"
+	],
 	"authors": [
 		{
 			"name": "Günther Rezniczek",

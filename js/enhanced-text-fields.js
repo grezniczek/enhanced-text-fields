@@ -8,6 +8,10 @@
 	const VIEW_MARKDOWN = 'markdown';
 	const VIEW_HTML = 'html';
 	const VIEW_JSON = 'json';
+	const THEME_LIGHT = 'light';
+	const THEME_DARK = 'dark';
+	const ACE_THEME_LIGHT = 'github_light_default';
+	const ACE_THEME_DARK = 'github_dark';
 	const ACE_TEXT_MODES = {
 		text: { label: 'Text', normalizes: false },
 		ini: { label: 'INI', normalizes: false },
@@ -140,6 +144,160 @@
 			$('<i/>', { class: 'fa-solid fa-pencil rc-text-viewer-edit-state__pencil', 'aria-hidden': 'true' }),
 			$('<i/>', { class: 'fa-solid fa-slash rc-text-viewer-edit-state__slash', 'aria-hidden': 'true' })
 		);
+	}
+
+	/**
+	 * Returns the JavaScript Module Object emitted by the External Module Framework.
+	 *
+	 * @returns {object|null}
+	 */
+	function getJavascriptModuleObject() {
+		const jsmoName = state.config && state.config.jsmoName;
+		let jsmo = global;
+        for (const part of jsmoName.split('.')) {
+            jsmo = jsmo?.[part];
+            if (jsmo === undefined || jsmo === null) {
+                break;
+            }
+        }
+        return jsmo;
+    }
+
+	/**
+	 * Returns the stored light/dark preference for an enhancement type.
+	 *
+	 * @param {string} type Enhancement type.
+	 * @returns {string}
+	 */
+	function getThemePreference(type) {
+		const preferences = state.config.themePreferences || {};
+		return preferences[type] === THEME_DARK ? THEME_DARK : THEME_LIGHT;
+	}
+
+	/**
+	 * Returns the Ace theme key for an enhancement type.
+	 *
+	 * @param {string} type Enhancement type.
+	 * @returns {string}
+	 */
+	function getPreferredAceTheme(type) {
+		return getThemePreference(type) === THEME_DARK ? ACE_THEME_DARK : ACE_THEME_LIGHT;
+	}
+
+	/**
+	 * Persists a theme preference through the JavaScript Module Object.
+	 *
+	 * @param {string} type Enhancement type.
+	 * @param {string} theme Light/dark preference.
+	 * @returns {void}
+	 */
+	function persistThemePreference(type, theme) {
+		const jsmo = getJavascriptModuleObject();
+		if (!jsmo) {
+			LOGGER.warn('Theme preference could not be saved because the JavaScript Module Object is unavailable.');
+			return;
+		}
+		jsmo.ajax('save-theme-preference', { type: type, theme: theme }).catch(function (e) {
+			LOGGER.warn('Theme preference save failed', type, theme, e);
+		});
+	}
+
+	/**
+	 * Applies an Ace theme preference to one controller.
+	 *
+	 * @param {object} controller Text viewer controller.
+	 * @param {string} theme Light/dark preference.
+	 * @returns {void}
+	 */
+	function applyThemeToController(controller, theme) {
+		if (!controller) {
+			return;
+		}
+		controller.currentTheme = theme === THEME_DARK ? THEME_DARK : THEME_LIGHT;
+		updateThemeButton(controller);
+		if (!controller.editor) {
+			return;
+		}
+		const themeConfig = getAceThemeConfig(theme === THEME_DARK ? ACE_THEME_DARK : ACE_THEME_LIGHT);
+		controller.editor.setTheme(themeConfig.module);
+	}
+
+	/**
+	 * Applies a new theme preference to all controllers of the same enhancement type.
+	 *
+	 * @param {string} type Enhancement type.
+	 * @param {string} theme Light/dark preference.
+	 * @returns {void}
+	 */
+	function applyThemeToControllers(type, theme) {
+		Object.keys(state.markdownControllers).forEach(function (key) {
+			const controller = state.markdownControllers[key];
+			if (controller.themeType === type) {
+				applyThemeToController(controller, theme);
+			}
+		});
+		Object.keys(state.jsonControllers).forEach(function (key) {
+			const controller = state.jsonControllers[key];
+			if (controller.themeType === type) {
+				applyThemeToController(controller, theme);
+			}
+		});
+		Object.keys(state.aceTextControllers).forEach(function (key) {
+			const controller = state.aceTextControllers[key];
+			if (controller.themeType === type) {
+				applyThemeToController(controller, theme);
+			}
+		});
+	}
+
+	/**
+	 * Toggles the theme preference for a controller's enhancement type.
+	 *
+	 * @param {object} controller Text viewer controller.
+	 * @returns {void}
+	 */
+	function toggleControllerTheme(controller) {
+		if (!controller || !controller.themeType) {
+			return;
+		}
+		const currentTheme = getThemePreference(controller.themeType);
+		const nextTheme = currentTheme === THEME_DARK ? THEME_LIGHT : THEME_DARK;
+		state.config.themePreferences[controller.themeType] = nextTheme;
+		applyThemeToControllers(controller.themeType, nextTheme);
+		persistThemePreference(controller.themeType, nextTheme);
+	}
+
+	/**
+	 * Returns whether the theme toggle should be visible for a controller.
+	 *
+	 * @param {object} controller Text viewer controller.
+	 * @returns {boolean}
+	 */
+	function isThemeToggleVisible(controller) {
+		if (!controller || !controller.themeType || !controller.isThemeableMode) {
+			return false;
+		}
+		if (controller.layout !== LAYOUT_EXPANDED && controller.layout !== LAYOUT_FULLSCREEN) {
+			return false;
+		}
+		return controller.isThemeableMode();
+	}
+
+	/**
+	 * Updates a controller's theme toggle icon and label.
+	 *
+	 * @param {object} controller Text viewer controller.
+	 * @returns {void}
+	 */
+	function updateThemeButton(controller) {
+		if (!controller || !controller.$themeButton || !controller.$themeButton.length) {
+			return;
+		}
+		const theme = getThemePreference(controller.themeType);
+		const title = theme === THEME_DARK ? 'Switch to light mode' : 'Switch to dark mode';
+		const iconClass = theme === THEME_DARK ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
+		controller.$themeButton.attr('title', title).attr('aria-label', title);
+		controller.$themeButton.find('i').attr('class', iconClass).attr('aria-hidden', 'true');
 	}
 
 	/**
@@ -297,7 +455,10 @@
 			$expandButton: options.$expandButton,
 			$fullscreenButton: options.$fullscreenButton,
 			$collapseButton: options.$collapseButton,
+			$themeButton: options.$themeButton || $(),
 			editor: null,
+			themeType: options.themeType || null,
+			currentTheme: options.themeType ? getThemePreference(options.themeType) : THEME_LIGHT,
 			rowConfig: field.rowConfig === 'full' ? 'full' : 'split',
 			canExpandToRowWidth: field.rowConfig === 'split',
 			canExpandRaw: $control.is('textarea'),
@@ -326,6 +487,9 @@
 	 * @returns {void}
 	 */
 	function handleTextViewerAction(controller, action) {
+		if (action === 'toggle-theme') {
+			toggleControllerTheme(controller);
+		}
 		if (action === 'expand') {
 			expandTextViewer(controller);
 		}
@@ -355,6 +519,8 @@
 		controller.$expandButton[isPanelMode && controller.canExpandToRowWidth && controller.layout !== LAYOUT_EXPANDED ? 'show' : 'hide']();
 		controller.$fullscreenButton[isPanelMode && controller.layout !== LAYOUT_FULLSCREEN ? 'show' : 'hide']();
 		controller.$collapseButton[isPanelMode && (controller.layout === LAYOUT_FULLSCREEN || controller.layout === LAYOUT_EXPANDED) ? 'show' : 'hide']();
+		updateThemeButton(controller);
+		controller.$themeButton[isThemeToggleVisible(controller) ? 'show' : 'hide']();
 		controller.$toolbar
 			.attr(controller.layoutAttribute, controller.layout)
 			.toggleClass('rc-text-viewer-md-toolbar--markdown', isPanelMode);
@@ -403,6 +569,7 @@
 		const $expandButton = createIconButton('expand', 'fa-solid fa-arrows-left-right', 'Expand to row width');
 		const $fullscreenButton = createIconButton('fullscreen', 'fa-solid fa-maximize', 'Fullscreen');
 		const $collapseButton = createIconButton('collapse', 'fa-solid fa-down-left-and-up-right-to-center', 'Collapse');
+		const $themeButton = createIconButton('toggle-theme', 'fa-solid fa-moon', 'Switch to dark mode');
 		if (!canExpandToRowWidth) {
 			$expandButton.addClass('rc-text-viewer-md-action--unavailable');
 		}
@@ -443,6 +610,7 @@
 		});
 		const controller = createTextViewerController({
 			viewerType: 'markdown',
+			themeType: 'markdown',
 			field: field,
 			$control: $control,
 			$toolbar: $toolbar,
@@ -457,6 +625,7 @@
 			$expandButton: $expandButton,
 			$fullscreenButton: $fullscreenButton,
 			$collapseButton: $collapseButton,
+			$themeButton: $themeButton,
 			initialHeight: initialHeight,
 		});
 		const initialMode = getMarkdownInitialMode($control, markdownConfig);
@@ -474,6 +643,7 @@
 			setMode: function (mode) { setMarkdownMode(controller, mode); },
 			updateToolbar: function () { updateMarkdownToolbar(controller); },
 			isPanelMode: function () { return controller.mode === VIEW_MARKDOWN || controller.mode === VIEW_HTML || (controller.mode === VIEW_RAW && controller.canExpandRaw); },
+			isThemeableMode: function () { return controller.mode === VIEW_MARKDOWN; },
 			modeAttribute: 'data-rc-md-mode',
 			layoutAttribute: 'data-rc-md-layout',
 			defaultMode: VIEW_HTML,
@@ -497,7 +667,7 @@
 				$htmlTab
 			);
 		}
-		$actions.append($expandButton, $fullscreenButton, $collapseButton);
+		$actions.append($themeButton, $expandButton, $fullscreenButton, $collapseButton);
 		$toolbar.append($tabs, $actions);
 		$viewerScroll.append($viewerContent);
 		$viewer.append($viewerScroll, $resizeHandle);
@@ -736,10 +906,12 @@
 		ensureAce().then(function () {
 			const editor = createAceEditor(editorId, {
 				mode: VIEW_MARKDOWN,
+				theme: getPreferredAceTheme(controller.themeType),
 				readOnly: !!field.readonly,
 				useWorker: false,
 			});
 			controller.editor = editor;
+			controller.currentTheme = getThemePreference(controller.themeType);
 			state.editors[`${controller.fieldName}-markdown`] = editor;
 			editor.setValue(controller.$control.val() || '', -1);
 			editor.session.on('change', debounce(function () {
@@ -1660,6 +1832,7 @@
 		const $expandButton = createIconButton('expand', 'fa-solid fa-arrows-left-right', 'Expand to row width');
 		const $fullscreenButton = createIconButton('fullscreen', 'fa-solid fa-maximize', 'Fullscreen');
 		const $collapseButton = createIconButton('collapse', 'fa-solid fa-down-left-and-up-right-to-center', 'Collapse');
+		const $themeButton = createIconButton('toggle-theme', 'fa-solid fa-moon', 'Switch to dark mode');
 		if (field.rowConfig !== 'split') {
 			$expandButton.addClass('rc-text-viewer-md-action--unavailable');
 		}
@@ -1687,6 +1860,7 @@
 		const canExpandRaw = $control.is('textarea');
 		const controller = createTextViewerController({
 			viewerType: 'json',
+			themeType: 'json',
 			field: field,
 			$control: $control,
 			$toolbar: $toolbar,
@@ -1699,6 +1873,7 @@
 			$expandButton: $expandButton,
 			$fullscreenButton: $fullscreenButton,
 			$collapseButton: $collapseButton,
+			$themeButton: $themeButton,
 			initialHeight: initialHeight,
 		});
 		$.extend(controller, {
@@ -1717,6 +1892,7 @@
 			setMode: function (mode) { setJsonMode(controller, mode); },
 			updateToolbar: function () { updateJsonToolbar(controller); },
 			isPanelMode: function () { return controller.mode === VIEW_JSON || (controller.mode === VIEW_RAW && controller.canExpandRaw); },
+			isThemeableMode: function () { return controller.mode === VIEW_JSON; },
 			modeAttribute: 'data-rc-json-mode',
 			layoutAttribute: 'data-rc-json-layout',
 			defaultMode: VIEW_JSON,
@@ -1738,7 +1914,7 @@
 		else {
 			$tabs.append($editability, $rawTab, $('<span/>', { class: 'rc-text-viewer-md-tab-separator', text: '|' }), $jsonTab, $status);
 		}
-		$actions.append($expandButton, $fullscreenButton, $collapseButton);
+		$actions.append($themeButton, $expandButton, $fullscreenButton, $collapseButton);
 		$toolbar.append($tabs, $actions);
 		$viewer.append($editor, $resizeHandle);
 		if (canExpandRaw) {
@@ -1766,11 +1942,13 @@
 		ensureAce().then(function () {
 			const editor = createAceEditor(editorId, {
 				mode: VIEW_JSON,
+				theme: getPreferredAceTheme(controller.themeType),
 				readOnly: !!field.readonly,
 				useWorker: false,
 				indent: controller.indent,
 			});
 			controller.editor = editor;
+			controller.currentTheme = getThemePreference(controller.themeType);
 			state.editors[fieldName] = editor;
 			const syncFromEditor = debounce(function () {
 				syncJsonFromEditor(controller);
@@ -2076,6 +2254,7 @@
 		const $expandButton = createIconButton('expand', 'fa-solid fa-arrows-left-right', 'Expand to row width');
 		const $fullscreenButton = createIconButton('fullscreen', 'fa-solid fa-maximize', 'Fullscreen');
 		const $collapseButton = createIconButton('collapse', 'fa-solid fa-down-left-and-up-right-to-center', 'Collapse');
+		const $themeButton = createIconButton('toggle-theme', 'fa-solid fa-moon', 'Switch to dark mode');
 		if (field.rowConfig !== 'split') {
 			$expandButton.addClass('rc-text-viewer-md-action--unavailable');
 		}
@@ -2103,6 +2282,7 @@
 		const canExpandRaw = $control.is('textarea');
 		const controller = createTextViewerController({
 			viewerType: mode,
+			themeType: mode,
 			field: field,
 			$control: $control,
 			$toolbar: $toolbar,
@@ -2115,6 +2295,7 @@
 			$expandButton: $expandButton,
 			$fullscreenButton: $fullscreenButton,
 			$collapseButton: $collapseButton,
+			$themeButton: $themeButton,
 			initialHeight: initialHeight,
 		});
 		$.extend(controller, {
@@ -2136,6 +2317,7 @@
 			setMode: function (nextMode) { setAceTextMode(controller, nextMode); },
 			updateToolbar: function () { updateAceTextToolbar(controller); },
 			isPanelMode: function () { return controller.mode === controller.aceMode || (controller.mode === VIEW_RAW && controller.canExpandRaw); },
+			isThemeableMode: function () { return controller.mode === controller.aceMode; },
 			modeAttribute: 'data-rc-code-mode',
 			layoutAttribute: 'data-rc-code-layout',
 			defaultMode: mode,
@@ -2157,7 +2339,7 @@
 		else {
 			$tabs.append($editability, $rawTab, $('<span/>', { class: 'rc-text-viewer-md-tab-separator', text: '|' }), $codeTab, $status);
 		}
-		$actions.append($expandButton, $fullscreenButton, $collapseButton);
+		$actions.append($themeButton, $expandButton, $fullscreenButton, $collapseButton);
 		$toolbar.append($tabs, $actions);
 		$viewer.append($editor, $resizeHandle);
 		if (canExpandRaw) {
@@ -2185,11 +2367,13 @@
 		ensureAce().then(function () {
 			const editor = createAceEditor(editorId, {
 				mode: mode,
+				theme: getPreferredAceTheme(controller.themeType),
 				readOnly: !!field.readonly,
 				useWorker: false,
 				indent: controller.indent,
 			});
 			controller.editor = editor;
+			controller.currentTheme = getThemePreference(controller.themeType);
 			state.editors[`${fieldName}-${mode}`] = editor;
 			const syncFromEditor = debounce(function () {
 				syncAceTextFromEditor(controller);
@@ -2491,6 +2675,17 @@
 		state.config = $.extend(true, {
 			debug: false,
 			fields: [],
+			jsmoName: null,
+			themePreferences: {
+				text: THEME_LIGHT,
+				json: THEME_LIGHT,
+				markdown: THEME_LIGHT,
+				css: THEME_LIGHT,
+				ini: THEME_LIGHT,
+				r: THEME_LIGHT,
+				xml: THEME_LIGHT,
+				yaml: THEME_LIGHT,
+			},
 			ace: {
 				script: null,
 				theme: 'github_light_default',
