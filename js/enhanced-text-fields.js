@@ -12,6 +12,16 @@
 	const THEME_DARK = 'dark';
 	const ACE_THEME_LIGHT = 'github_light_default';
 	const ACE_THEME_DARK = 'github_dark';
+	const SUPPORTED_MODES = [
+		'css',
+		'ini',
+		'json',
+		'markdown',
+		'r',
+		'text',
+		'xml',
+		'yaml',
+	];
 	const ACE_TEXT_MODES = {
 		text: { normalizes: false },
 		ini: { normalizes: false },
@@ -25,6 +35,11 @@
 	const LAYOUT_FULLSCREEN = 'fullscreen';
 	const MIN_MARKDOWN_HEIGHT = 100;
 	const CONTROLLED_FIELD_CLASS = 'rc-text-viewer-controlled-field';
+	const MODE_ATTRIBUTE = 'data-rc-text-viewer-mode';
+	const MODE_SELECTOR = '[' + MODE_ATTRIBUTE + ']';
+	const LAYOUT_ATTRIBUTE = 'data-rc-text-viewer-layout';
+	const TOOLBAR_CLASS = 'rc-text-viewer-md-toolbar d-print-none';
+	const VIEWER_CLASS = 'rc-text-viewer-panel';
 
 	if (global[NS]) {
 		return;
@@ -508,13 +523,12 @@
 	 * Builds shared toolbar elements and action buttons.
 	 *
 	 * @param {string} fieldName REDCap field name.
-	 * @param {string} extraClass Extra toolbar class.
 	 * @param {boolean} canExpandToRowWidth Whether row expansion is available.
 	 * @returns {object}
 	 */
-	function createToolbarParts(fieldName, extraClass, canExpandToRowWidth) {
+	function createToolbarParts(fieldName, canExpandToRowWidth) {
 		const $toolbar = $('<div/>', {
-			class: ['rc-text-viewer-md-toolbar', extraClass, 'd-print-none'].filter(Boolean).join(' '),
+			class: TOOLBAR_CLASS,
 			'data-rc-text-viewer-field': fieldName,
 		});
 		const $tabs = $('<span/>', { class: 'rc-text-viewer-md-tabs' });
@@ -542,16 +556,15 @@
 	/**
 	 * Builds a mode tab.
 	 *
-	 * @param {string} modeAttribute Data attribute used by the controller.
 	 * @param {string} mode Mode value.
 	 * @param {string} label Visible label.
 	 * @returns {jQuery}
 	 */
-	function createModeTab(modeAttribute, mode, label) {
+	function createModeTab(mode, label) {
 		return $('<a/>', {
 			href: 'javascript:;',
 			class: 'rc-text-viewer-md-tab',
-			[modeAttribute]: mode,
+			[MODE_ATTRIBUTE]: mode,
 			text: label,
 		});
 	}
@@ -589,14 +602,13 @@
 	 * Wires shared toolbar click behavior.
 	 *
 	 * @param {object} controller Text viewer controller.
-	 * @param {string} modeSelector Selector for mode tabs.
 	 * @param {Function} setMode Mode setter.
 	 * @returns {void}
 	 */
-	function bindTextViewerToolbar(controller, modeSelector, setMode) {
-		controller.$toolbar.on('click', modeSelector, function (ev) {
+	function bindTextViewerToolbar(controller, setMode) {
+		controller.$toolbar.on('click', MODE_SELECTOR, function (ev) {
 			ev.preventDefault();
-			const mode = $(this).attr(controller.modeAttribute);
+			const mode = $(this).attr(MODE_ATTRIBUTE);
 			if (mode !== controller.mode) {
 				setMode(controller, mode);
 			}
@@ -902,9 +914,9 @@
 	 */
 	function updateTextViewerToolbar(controller) {
 		const isPanelMode = controller.isPanelMode();
-		controller.$toolbar.find('[' + controller.modeAttribute + ']').each(function () {
+		controller.$toolbar.find(MODE_SELECTOR).each(function () {
 			const $tab = $(this);
-			const active = $tab.attr(controller.modeAttribute) === controller.mode;
+			const active = $tab.attr(MODE_ATTRIBUTE) === controller.mode;
 			$tab.toggleClass('active', active);
 			$tab.attr('aria-current', active ? 'true' : 'false');
 		});
@@ -915,7 +927,7 @@
 		updateThemeButton(controller);
 		controller.$themeButton[isThemeToggleVisible(controller) ? 'show' : 'hide']();
 		controller.$toolbar
-			.attr(controller.layoutAttribute, controller.layout)
+			.attr(LAYOUT_ATTRIBUTE, controller.layout)
 			.toggleClass('rc-text-viewer-md-toolbar--markdown', isPanelMode);
 	}
 
@@ -929,89 +941,40 @@
 	 */
 	function getEnhancedTextSpec($control, field, mode) {
 		const fieldName = field.name;
-		if (mode === VIEW_MARKDOWN) {
-			const modeConfig = field.markdown || {};
-			const editorOnly = !!modeConfig.editorOnly;
-			return {
-				mode: VIEW_MARKDOWN,
-				modeConfig: modeConfig,
-				editorOnly: editorOnly,
-				initialMode: editorOnly ? VIEW_MARKDOWN : getMarkdownInitialMode($control, modeConfig),
-				editorMode: VIEW_MARKDOWN,
-				editorId: `rc-text-viewer-md-ace-${fieldName}`,
-				toolbarClass: '',
-				viewerClass: 'rc-text-viewer-md-preview',
-				modeAttribute: 'data-rc-md-mode',
-				modeSelector: '[data-rc-md-mode]',
-				layoutAttribute: 'data-rc-md-layout',
-				defaultMode: VIEW_HTML,
-				tabs: editorOnly
-					? [VIEW_MARKDOWN, VIEW_HTML]
-					: [VIEW_RAW, VIEW_MARKDOWN, VIEW_HTML],
-				stateKey: fieldName,
-				editorKey: `${fieldName}-markdown`,
-				buildController: extendMarkdownController,
-				mount: mountMarkdownViewer,
-				setMode: setMarkdownMode,
-				afterCreate: initMarkdownWindowResize,
-			};
-		}
-		if (mode === VIEW_JSON) {
-			const modeConfig = field.json || {};
-			const editorOnly = !!modeConfig.editorOnly;
-			return {
-				mode: VIEW_JSON,
-				modeConfig: modeConfig,
-				editorOnly: editorOnly,
-				initialMode: editorOnly || modeConfig.initialMode === VIEW_JSON ? VIEW_JSON : VIEW_RAW,
-				editorMode: VIEW_JSON,
-				editorId: `rc-text-viewer-ace-${fieldName}`,
-				toolbarClass: 'rc-text-viewer-json-toolbar',
-				viewerClass: 'rc-text-viewer-json-preview',
-				modeAttribute: 'data-rc-json-mode',
-				modeSelector: '[data-rc-json-mode]',
-				layoutAttribute: 'data-rc-json-layout',
-				defaultMode: VIEW_JSON,
-				tabs: editorOnly ? [VIEW_JSON] : [VIEW_RAW, VIEW_JSON],
-				stateKey: fieldName,
-				editorKey: fieldName,
-				status: true,
-				buildController: extendJsonController,
-				mount: mountAceTextViewer,
-				setMode: setJsonMode,
-				syncFromEditor: syncJsonFromEditor,
-				normalizeEditor: normalizeJsonEditor,
-				renderFromControl: renderJsonFromControl,
-				renderFallback: renderJsonFallback,
-			};
-		}
+		const isMarkdown = mode === VIEW_MARKDOWN;
+		const isJson = mode === VIEW_JSON;
 		const modeConfig = field[mode] || {};
 		const editorOnly = !!modeConfig.editorOnly;
-		return {
+		const spec = {
 			mode: mode,
 			modeConfig: modeConfig,
 			editorOnly: editorOnly,
-			initialMode: editorOnly || modeConfig.initialMode === mode ? mode : VIEW_RAW,
+			initialMode: editorOnly ? mode : getInitialMode($control, mode, modeConfig.initialMode),
 			editorMode: mode,
-			editorId: `rc-text-viewer-${mode}-ace-${fieldName}`,
-			toolbarClass: 'rc-text-viewer-code-toolbar',
-			viewerClass: 'rc-text-viewer-json-preview rc-text-viewer-code-preview',
-			modeAttribute: 'data-rc-code-mode',
-			modeSelector: '[data-rc-code-mode]',
-			layoutAttribute: 'data-rc-code-layout',
+			editorId: `rc-text-viewer-ace-${fieldName}`,
 			defaultMode: mode,
 			tabs: editorOnly ? [mode] : [VIEW_RAW, mode],
-			stateKey: `${fieldName}-${mode}`,
-			editorKey: `${fieldName}-${mode}`,
-			status: true,
-			buildController: extendAceTextController,
+			stateKey: fieldName,
+			editorKey: fieldName,
+			status: !isMarkdown,
+			buildController: isJson ? extendJsonController : extendAceTextController,
 			mount: mountAceTextViewer,
-			setMode: setAceTextMode,
-			syncFromEditor: syncAceTextFromEditor,
-			normalizeEditor: normalizeAceTextEditor,
-			renderFromControl: renderAceTextFromControl,
-			renderFallback: renderAceTextFallback,
+			setMode: isJson ? setJsonMode : setAceTextMode,
+			syncFromEditor: isJson ? syncJsonFromEditor : syncAceTextFromEditor,
+			normalizeEditor: isJson ? normalizeJsonEditor : normalizeAceTextEditor,
+			renderFromControl: isJson ? renderJsonFromControl : renderAceTextFromControl,
+			renderFallback: isJson ? renderJsonFallback : renderAceTextFallback,
 		};
+		if (isMarkdown) {
+			spec.initialMode = editorOnly ? VIEW_MARKDOWN : getInitialMode($control, mode, modeConfig.initialMode);
+			spec.defaultMode = VIEW_HTML;
+			spec.tabs = editorOnly ? [VIEW_MARKDOWN, VIEW_HTML] : [VIEW_RAW, VIEW_MARKDOWN, VIEW_HTML];
+			spec.buildController = extendMarkdownController;
+			spec.mount = mountMarkdownViewer;
+			spec.setMode = setMarkdownMode;
+			spec.afterCreate = initMarkdownWindowResize;
+		}
+		return spec;
 	}
 
 	/**
@@ -1025,11 +988,11 @@
 	function createEnhancedTextController($control, field, mode) {
 		const fieldName = field.name;
 		const spec = getEnhancedTextSpec($control, field, mode);
-		const toolbarParts = createToolbarParts(fieldName, spec.toolbarClass, field.rowConfig === 'split');
+		const toolbarParts = createToolbarParts(fieldName, field.rowConfig === 'split');
 		const $editability = createEditStateIndicator(!!field.readonly);
 		const $status = spec.status ? $('<span/>', { class: 'rc-text-viewer-json-status', 'aria-live': 'polite' }) : $();
 		const $viewer = $('<div/>', {
-			class: spec.viewerClass,
+			class: VIEWER_CLASS,
 			'data-rc-text-viewer-field': fieldName,
 			tabindex: mode === VIEW_MARKDOWN ? '0' : null,
 		});
@@ -1065,7 +1028,7 @@
 
 		appendControllerTabs(toolbarParts.$tabs, $editability, spec, $status);
 		spec.mount(controller);
-		bindTextViewerToolbar(controller, spec.modeSelector, spec.setMode);
+		bindTextViewerToolbar(controller, spec.setMode);
 		initTextViewerResizeHandles(controller);
 		initEnhancedEditor(controller, spec.editorId, field, spec);
 		if (spec.afterCreate) {
@@ -1085,7 +1048,7 @@
 	 * @returns {boolean}
 	 */
 	function isSupportedEnhancementMode(mode) {
-		return mode === VIEW_MARKDOWN || mode === VIEW_JSON || !!ACE_TEXT_MODES[mode];
+		return SUPPORTED_MODES.indexOf(mode) !== -1;
 	}
 
 	/**
@@ -1099,10 +1062,6 @@
 	function attachEnhancedTextViewer($control, field, mode) {
 		if (!isSupportedEnhancementMode(mode)) {
 			LOGGER.warn('Unsupported enhancement skipped', mode, field.name);
-			return;
-		}
-		if (mode === VIEW_MARKDOWN && !$control.is('textarea')) {
-			LOGGER.warn('Markdown viewer skipped for non-textarea field', field.name);
 			return;
 		}
 		createEnhancedTextController($control, field, mode);
@@ -1119,7 +1078,7 @@
 	 */
 	function appendControllerTabs($tabs, $editability, spec, $status) {
 		const tabItems = spec.tabs.map(function (tabMode) {
-			return createModeTab(spec.modeAttribute, tabMode, getModeLabel(tabMode));
+			return createModeTab(tabMode, getModeLabel(tabMode));
 		});
 		$tabs.append($editability);
 		if (spec.editorOnly && tabItems.length === 1) {
@@ -1158,8 +1117,6 @@
 			updateToolbar: function () { updateMarkdownToolbar(controller); },
 			isPanelMode: function () { return controller.mode === VIEW_MARKDOWN || controller.mode === VIEW_HTML || (controller.mode === VIEW_RAW && controller.canExpandRaw); },
 			isThemeableMode: function () { return controller.mode === VIEW_MARKDOWN; },
-			modeAttribute: spec.modeAttribute,
-			layoutAttribute: spec.layoutAttribute,
 			defaultMode: spec.defaultMode,
 		});
 	}
@@ -1191,8 +1148,6 @@
 			updateToolbar: function () { updateJsonToolbar(controller); },
 			isPanelMode: function () { return controller.mode === VIEW_JSON || (controller.mode === VIEW_RAW && controller.canExpandRaw); },
 			isThemeableMode: function () { return controller.mode === VIEW_JSON; },
-			modeAttribute: spec.modeAttribute,
-			layoutAttribute: spec.layoutAttribute,
 			defaultMode: spec.defaultMode,
 			updatingEditor: false,
 			updatingControl: false,
@@ -1233,8 +1188,6 @@
 			updateToolbar: function () { updateAceTextToolbar(controller); },
 			isPanelMode: function () { return controller.mode === controller.aceMode || (controller.mode === VIEW_RAW && controller.canExpandRaw); },
 			isThemeableMode: function () { return controller.mode === controller.aceMode; },
-			modeAttribute: spec.modeAttribute,
-			layoutAttribute: spec.layoutAttribute,
 			defaultMode: spec.defaultMode,
 			updatingEditor: false,
 			updatingControl: false,
@@ -1245,18 +1198,19 @@
 	}
 
 	/**
-	 * Returns the initial Markdown mode for a field.
+	 * Returns the initial visible mode for a field.
 	 *
-	 * @param {jQuery} $control Textarea control.
-	 * @param {object} markdownConfig Markdown enhancement configuration.
+	 * @param {jQuery} $control Field input or textarea.
+	 * @param {string} mode Enhanced text field mode.
+	 * @param {string} initialMode Initial view mode.
 	 * @returns {string}
 	 */
-	function getMarkdownInitialMode($control, markdownConfig) {
-		if (markdownConfig.initialMode === VIEW_HTML) {
-			return String($control.val() || '').trim() === '' ? VIEW_RAW : VIEW_HTML;
+	function getInitialMode($control, mode, initialMode) {
+		if (mode === VIEW_MARKDOWN && initialMode === VIEW_HTML) {
+			return String($control.val() || '').trim() === '' ? VIEW_RAW : initialMode;
 		}
-		if (markdownConfig.initialMode === VIEW_MARKDOWN) {
-			return VIEW_MARKDOWN;
+		if (initialMode === mode) {
+			return initialMode;
 		}
 		return VIEW_RAW;
 	}
@@ -2637,7 +2591,7 @@
 				return;
 			}
 
-			const mode = determineMode(field.viewers || [], $control);
+			const mode = determineMode(field.viewers || []);
 			const key = `${NS}-isInitialized`;
 			if (mode === '' || $control.data(key)) {
 				return;
@@ -2648,16 +2602,14 @@
 	}
 
 	/**
-	 * Determines which viewer type to use for the given field.
-	 * TODO: Later, we may want to allow multiple viewer types and take a best guess depending on field type and content. If the content is empty or when when no clear distinction can be made, the fallback is to use the plain text viewer. For now, we attach to the first viewer type that is configured for the field.
-	 * @param {string[]} viewers
-	 * @param {jQuery<HTMLElement>} $control
-	 * @returns 
+	 * Determines which enhancement mode to use for the given field.
+	 *
+	 * @param {string[]} viewers Configured enhancement modes.
+	 * @returns {string}
 	 */
-	function determineMode(viewers, $control) {
+	function determineMode(viewers) {
 		viewers = viewers || [];
-		if (viewers.length === 0) return '';
-		return viewers[0];
+		return viewers.filter(isSupportedEnhancementMode)[0] || '';
 	}
 
 	/**
