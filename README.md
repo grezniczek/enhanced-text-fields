@@ -23,7 +23,7 @@ Examples:
 - `@ENHANCED-TEXT-JSON="initial:json, indent:4"`
 - `@ENHANCED-TEXT-MARKDOWN="initial:html, height:240"`
 - `@ENHANCED-TEXT-CSS="initial:css, format:pretty"`
-- `@ENHANCED-TEXT-XML="xml-only, indent:tab"`
+- `@ENHANCED-TEXT-XML="xml-only, indent:tab, scope:all"`
 - `@ENHANCED-TEXT-YAML="initial:yaml"`
 
 ## Parameters
@@ -42,6 +42,9 @@ comma-separated list such as `@ENHANCED-TEXT-JSON="initial:json, height:240"`.
   whitespace.
 - `indent:2`, `indent:4`, or `indent:tab` controls pretty indentation for JSON,
   CSS, and XML. The default is two spaces.
+- `scope:form`, `scope:survey`, or `scope:all` controls where the enhanced
+  control is injected. `scope:form` is the default, so action tags do not affect
+  surveys unless `scope:survey` or `scope:all` is specified.
 - `json-only`, `md-only`, `css-only`, `xml-only`, `text-only`, `ini-only`,
   `r-only`, or `yaml-only` opens the enhanced mode and hides the Raw tab.
   `editor-only` is accepted as a generic alias for the non-Markdown Ace editor

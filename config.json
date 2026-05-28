@@ -17,35 +17,35 @@
 	"action-tags": [
 		{
 			"tag": "@ENHANCED-TEXT-PLAIN",
-			"description": "Plain text editor for Notes fields. Params: initial, height, text-only. See documentation."
+			"description": "Plain text editor for Notes fields. Params: initial, height, scope, text-only. See documentation."
 		},
 		{
 			"tag": "@ENHANCED-TEXT-JSON",
-			"description": "JSON editor for text/Notes fields. Params: initial, height, format, indent, json-only. See documentation."
+			"description": "JSON editor for text/Notes fields. Params: initial, height, format, indent, scope, json-only. See documentation."
 		},
 		{
 			"tag": "@ENHANCED-TEXT-MARKDOWN",
-			"description": "Markdown editor and HTML preview for Notes fields. Params: initial, height, md-only. See documentation."
+			"description": "Markdown editor and HTML preview for Notes fields. Params: initial, height, scope, md-only. See documentation."
 		},
 		{
 			"tag": "@ENHANCED-TEXT-CSS",
-			"description": "CSS editor for text/Notes fields. Params: initial, height, format, indent, css-only. See documentation."
+			"description": "CSS editor for text/Notes fields. Params: initial, height, format, indent, scope, css-only. See documentation."
 		},
 		{
 			"tag": "@ENHANCED-TEXT-INI",
-			"description": "INI editor for Notes fields. Params: initial, height, ini-only. See documentation."
+			"description": "INI editor for Notes fields. Params: initial, height, scope, ini-only. See documentation."
 		},
 		{
 			"tag": "@ENHANCED-TEXT-R",
-			"description": "R editor for Notes fields. Params: initial, height, r-only. See documentation."
+			"description": "R editor for Notes fields. Params: initial, height, scope, r-only. See documentation."
 		},
 		{
 			"tag": "@ENHANCED-TEXT-XML",
-			"description": "XML editor for text/Notes fields. Params: initial, height, format, indent, xml-only. See documentation."
+			"description": "XML editor for text/Notes fields. Params: initial, height, format, indent, scope, xml-only. See documentation."
 		},
 		{
 			"tag": "@ENHANCED-TEXT-YAML",
-			"description": "YAML editor for Notes fields. Params: initial, height, yaml-only. See documentation."
+			"description": "YAML editor for Notes fields. Params: initial, height, scope, yaml-only. See documentation."
 		}
 	],
 	"project-settings": [

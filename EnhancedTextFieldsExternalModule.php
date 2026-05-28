@@ -89,7 +89,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 	 * @param string|null $page_full          Current full page path.
 	 * @param string|null $user_id            Current REDCap username.
 	 * @param int|null    $group_id           Current DAG id.
-	 * @return array
+	 * @return array|null
 	 */
 	function redcap_module_ajax($action, $payload, $project_id, $record, $instrument, $event_id, $repeat_instance, $survey_hash, $response_id, $survey_queue_hash, $page, $page_full, $user_id, $group_id)
 	{
@@ -109,7 +109,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 	 * @param string      $instrument      Current instrument name.
 	 * @param int|null    $event_id        Current event id.
 	 * @param int|null    $repeat_instance Current repeat instance.
-	 * @param bool        $user_id         The current user (or null on survey pages).
+	 * @param string|null $user_id         The current user (or null on survey pages).
 	 * @return void
 	 */
 	private function injectEnhancedFields($Proj, $record, $instrument, $event_id, $repeat_instance, $user_id)
@@ -249,7 +249,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 	 *
 	 * @param array $payload AJAX payload.
 	 * @param string $user_id REDCap username.
-	 * @return void
+	 * @return array
 	 */
 	private function saveThemePreference($payload, $user_id)
 	{
@@ -357,6 +357,8 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 		};
 
 		foreach ($actionTags[self::AT_ENHANCED_TEXT_MARKDOWN] ?? [] as $fieldName => $tagInfo) {
+			$params = $tagInfo['params'] ?? '';
+			if (!$this->shouldInjectForScope($params, $is_survey)) continue;
 			$fieldMetadata = $metadata[$fieldName] ?? null;
 			if (empty($fieldMetadata) || ($fieldMetadata['element_type'] ?? '') !== 'textarea') continue;
 			$viewerFields[$fieldName] = [
@@ -364,13 +366,15 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 				'viewers' => ['markdown'],
 				'readonly' => $is_readonly($fieldName),
 				'rowConfig' => in_array($fieldMetadata['custom_alignment'] ?? '', ['LH', 'LV']) ? 'full' : 'split',
-				'markdown' => $this->parseMarkdownViewerParams($tagInfo['params'] ?? ''),
+				'markdown' => $this->parseMarkdownViewerParams($params),
 			];
 		}
 		foreach ($actionTags[self::AT_ENHANCED_TEXT_JSON] ?? [] as $fieldName => $tagInfo) {
+			$params = $tagInfo['params'] ?? '';
+			if (!$this->shouldInjectForScope($params, $is_survey)) continue;
 			$fieldMetadata = $metadata[$fieldName] ?? null;
 			if (empty($fieldMetadata) || !in_array($fieldMetadata['element_type'] ?? '', ['text', 'textarea'], true)) continue;
-			$jsonParams = $this->parseJsonViewerParams($tagInfo['params'] ?? '');
+			$jsonParams = $this->parseJsonViewerParams($params);
 			if (($fieldMetadata['element_type'] ?? '') === 'text') {
 				$jsonParams['format'] = 'compact';
 			}
@@ -397,10 +401,12 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 		);
 		foreach ($ace_enhancements as $mode => $enhancement) {
 			foreach ($actionTags[$enhancement['tag']] ?? [] as $fieldName => $tagInfo) {
+				$params = $tagInfo['params'] ?? '';
+				if (!$this->shouldInjectForScope($params, $is_survey)) continue;
 				$fieldMetadata = $metadata[$fieldName] ?? null;
 				$allowedTypes = $enhancement['allowTextField'] ? ['text', 'textarea'] : ['textarea'];
 				if (empty($fieldMetadata) || !in_array($fieldMetadata['element_type'] ?? '', $allowedTypes, true)) continue;
-				$params = $this->parseAceTextParams($tagInfo['params'] ?? '', $mode);
+				$params = $this->parseAceTextParams($params, $mode);
 				if (($fieldMetadata['element_type'] ?? '') === 'text') {
 					$params['format'] = 'compact';
 				}
@@ -482,6 +488,60 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			$config['initialMode'] = 'markdown';
 		}
 		return $config;
+	}
+
+	/**
+	 * Determines whether an action tag should inject controls in the current page scope.
+	 *
+	 * @param mixed $params    Raw action-tag parameter value.
+	 * @param bool  $is_survey Whether the current page is a survey page.
+	 * @return bool
+	 */
+	private function shouldInjectForScope($params, $is_survey)
+	{
+		$scope = $this->parseActionTagScope($params);
+		if ($scope === 'all') {
+			return true;
+		}
+		if ($scope === 'survey') {
+			return $is_survey;
+		}
+		return !$is_survey;
+	}
+
+	/**
+	 * Parses the scope parameter shared by all enhancement action tags.
+	 *
+	 * @param mixed $params Raw action-tag parameter value.
+	 * @return string
+	 */
+	private function parseActionTagScope($params)
+	{
+		$value = trim((string)$params);
+		if ($value === '') {
+			return 'form';
+		}
+
+		$decoded = json_decode($value, true);
+		if (is_string($decoded)) {
+			$value = $decoded;
+		}
+		else {
+			$value = trim($value, "\"'");
+		}
+
+		$scope = 'form';
+		$tokens = array_map('trim', explode(',', strtolower($value)));
+		foreach ($tokens as $token) {
+			if (strpos($token, 'scope:') !== 0) {
+				continue;
+			}
+			$parsed_scope = trim(substr($token, strlen('scope:')));
+			if (in_array($parsed_scope, ['form', 'survey', 'all'], true)) {
+				$scope = $parsed_scope;
+			}
+		}
+		return $scope;
 	}
 
 	/**
