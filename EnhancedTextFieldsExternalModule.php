@@ -307,16 +307,13 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 	/**
 	 * Returns file contents for the client-side file viewer.
 	 *
-	 * This is intentionally stubbed while the client-side viewer behavior is being built.
-	 *
-	 * @param mixed $payload Client payload.
-	 * @param int|string $project_id
-	 * @param string|null $user_id
-	 * @param string|null $user_id
-	 * @param string $instrument
-	 * @param string|null $survey_hash
-	 * @param string $record
-	 * @return string
+	 * @param array       $payload     Client payload.
+	 * @param int|string  $project_id  Current project id.
+	 * @param string|null $user_id     Current REDCap username.
+	 * @param string|null $instrument  Current instrument name.
+	 * @param string|null $survey_hash Current survey hash.
+	 * @param string|null $record      Current record id.
+	 * @return array{ok:bool,content?:string,error?:string}
 	 */
 	private function getFileContent($payload, $project_id, $user_id, $instrument, $survey_hash, $record)
 	{
@@ -359,7 +356,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			}
 
 			// All valid, get content
-			list ($_, $_, $content) = \Files::getEdocContentsAttributes($docId);
+			// list ($_, $_, $content) = \Files::getEdocContentsAttributes($docId);
 
 		} while (false);
 
@@ -371,11 +368,49 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			'content' => $content,
 		];
 	}
-	
-	// TODO: Add file size setting to config.json, add PHPDoc, support k/kb/m/mb
-	private function getMaxAllowedFileSize($project_id) {
-		$maxFileSize = intval($this->framework->getProjectSetting('max-file-size', $project_id) ?? 0);
-		return $maxFileSize === 0 ? self::DEFAULT_FILE_SIZE_LIMIT : $maxFileSize;
+
+	/**
+	 * Returns the configured maximum previewable file size in bytes.
+	 *
+	 * An empty setting uses the module default. A value of 0 disables the limit. Supported suffixes are
+	 * k/kb and m/mb, using binary units.
+	 *
+	 * @param int|string $project_id Current project id.
+	 * @return int Maximum file size in bytes, or 0 for unlimited.
+	 */
+	private function getMaxAllowedFileSize($project_id)
+	{
+		$rawSetting = $this->framework->getProjectSetting('max-file-size', $project_id);
+		$maxFileSize = $this->parseFileSizeLimit($rawSetting);
+		return $maxFileSize === null ? self::DEFAULT_FILE_SIZE_LIMIT : $maxFileSize;
+	}
+
+	/**
+	 * Parses a file size setting.
+	 *
+	 * @param mixed $value Raw setting value.
+	 * @return int|null Parsed byte count, 0 for unlimited, or null when empty/invalid.
+	 */
+	private function parseFileSizeLimit($value)
+	{
+		$setting = trim((string)$value);
+		if ($setting === '') {
+			return null;
+		}
+
+		if (!preg_match('/^(\d+)\s*(b|k|kb|m|mb)?$/i', $setting, $matches)) {
+			return null;
+		}
+
+		$size = (int)$matches[1];
+		$unit = strtolower($matches[2] ?? 'b');
+		if ($unit === 'k' || $unit === 'kb') {
+			return $size * 1024;
+		}
+		if ($unit === 'm' || $unit === 'mb') {
+			return $size * 1024 * 1024;
+		}
+		return $size;
 	}
 
 

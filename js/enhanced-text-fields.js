@@ -1587,16 +1587,45 @@
 			filename: info.filename,
 			mode: info.mode,
 		}).then(function (response) {
-			// TODO: Check response: { 'ok': true, content: '...' } or { 'ok': false, error: '...' }
-			// TODO: In case of error, display a simpleDialog with the error message.
 			if (typeof response === 'string') {
 				return response;
 			}
-			if (response && typeof response.content === 'string') {
+			if (response && response.ok === true && typeof response.content === 'string') {
 				return response.content;
 			}
-			return String(response || '');
+			if (response && response.ok === false) {
+				return rejectFileViewerResponse(response.error || 'This file is not currently available for viewing.');
+			}
+			return rejectFileViewerResponse('The file preview response was not recognized.');
 		});
+	}
+
+	/**
+	 * Shows a REDCap dialog for a failed file preview response and rejects the promise chain.
+	 *
+	 * @param {string} message Error message.
+	 * @returns {Promise<never>}
+	 */
+	function rejectFileViewerResponse(message) {
+		showFileViewerErrorDialog(message);
+		const error = new Error(message);
+		error.dialogShown = true;
+		return Promise.reject(error);
+	}
+
+	/**
+	 * Displays a file preview error using REDCap's dialog helper when available.
+	 *
+	 * @param {string} message Error message.
+	 * @returns {void}
+	 */
+	function showFileViewerErrorDialog(message) {
+		const safeMessage = $('<div/>').text(message || 'Unable to load file.').html();
+		if (typeof global.simpleDialog === 'function') {
+			global.simpleDialog(safeMessage, 'File preview unavailable');
+			return;
+		}
+		LOGGER.warn('File preview unavailable', message);
 	}
 
 	/**
@@ -1699,6 +1728,9 @@
 	 */
 	function setFileViewerError(controller, error) {
 		const message = error && error.message ? error.message : String(error || 'Unable to load file.');
+		if (!error || !error.dialogShown) {
+			showFileViewerErrorDialog(message);
+		}
 		controller.$viewer.addClass('rc-text-viewer--invalid');
 		controller.$previewContent.html($('<pre/>').text(message));
 		if (controller.editor) {

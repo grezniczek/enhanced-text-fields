@@ -57,6 +57,11 @@
 			"key": "javascript-debug",
 			"name": "Output debug information to the browser console",
 			"type": "checkbox"
+		},
+		{
+			"key": "max-file-size",
+			"name": "Maximum file size that can be previewed (bytes, KB, or MB; blank = 10MB; 0 = unlimited)",
+			"type": "text"
 		}
 	]
 }
