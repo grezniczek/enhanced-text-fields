@@ -2,32 +2,6 @@
 
 namespace DE\RUB\SEG\EnhancedTextFieldsExternalModule;
 
-spl_autoload_register(
-	/**
-	 * Loads classes that belong to this module namespace from the classes folder.
-	 *
-	 * @param string $class Fully qualified class name requested by PHP.
-	 * @return void
-	 */
-	function ($class) {
-		/** @var string $namespace Module namespace prefix. */
-		$namespace = __NAMESPACE__ . '\\';
-		/** @var int|false $namespace_position Prefix position in the requested class. */
-		$namespace_position = strpos($class, $namespace);
-		if ($namespace_position !== 0) {
-			return;
-		}
-
-		/** @var string $relative_class Class name relative to this module namespace. */
-		$relative_class = substr($class, strlen($namespace));
-		/** @var string $class_file Absolute class file path. */
-		$class_file = __DIR__ . '/classes/' . str_replace('\\', '/', $relative_class) . '.php';
-		if (is_readable($class_file)) {
-			require_once $class_file;
-		}
-	}
-);
-
 /**
  * External Module entry point for enhanced text fields.
  */
@@ -482,3 +456,29 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 	}
 
 }
+
+spl_autoload_register(
+	/**
+	 * Loads classes that belong to this module namespace from the classes folder.
+	 *
+	 * @param string $class Fully qualified class name requested by PHP.
+	 * @return void
+	 */
+	function ($class) {
+		/** @var string $namespace Module namespace prefix. */
+		$namespace = __NAMESPACE__ . '\\';
+		/** @var int|false $namespace_position Prefix position in the requested class. */
+		$namespace_position = strpos($class, $namespace);
+		if ($namespace_position !== 0) {
+			return;
+		}
+
+		/** @var string $relative_class Class name relative to this module namespace. */
+		$relative_class = substr($class, strlen($namespace));
+		/** @var string $class_file Absolute class file path. */
+		$class_file = __DIR__ . '/classes/' . str_replace('\\', '/', $relative_class) . '.php';
+		if (is_readable($class_file)) {
+			require_once $class_file;
+		}
+	}
+);
