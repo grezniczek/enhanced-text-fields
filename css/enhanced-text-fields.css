@@ -167,7 +167,7 @@ tr[sq_id]:has(td.data) .rc-text-viewer-md-toolbar {
 .rc-text-viewer-md-tabs {
 	align-items: center;
 	display: inline-flex;
-	gap: 6px;
+	gap: 2px;
 	min-width: 0;
 }
 
