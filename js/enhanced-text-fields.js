@@ -762,12 +762,11 @@
 	 *
 	 * @param {object} controller Text viewer controller.
 	 * @param {string} mode Desired mode.
-	 * @param {object} options Mode callbacks and editor settings.
 	 * @returns {void}
 	 */
-	function setAceBackedMode(controller, mode, options) {
-		if (controller[options.editorOnlyProperty] || mode === options.editorMode) {
-			mode = options.editorMode;
+	function setAceBackedMode(controller, mode) {
+		if (controller.editorOnly || mode === controller.aceMode) {
+			mode = controller.aceMode;
 		}
 		else {
 			mode = VIEW_RAW;
@@ -776,7 +775,7 @@
 		const previousMode = controller.mode;
 		const previousLayout = controller.layout;
 		if (previousMode === VIEW_RAW && mode !== VIEW_RAW) {
-			options.renderFromControl(controller);
+			controller.renderFromControl();
 		}
 		if (previousMode !== mode && previousLayout !== LAYOUT_NORMAL) {
 			rememberTextViewerHeight(controller);
@@ -784,15 +783,15 @@
 		}
 		controller.mode = mode;
 		if (mode === VIEW_RAW) {
-			options.normalizeEditor(controller);
+			controller.normalizeEditor();
 			syncTextViewerNormalSize(controller, true);
 			showAceBackedRawMode(controller);
 		}
 		else {
 			syncTextViewerNormalSize(controller, true);
-			showAceBackedEditorMode(controller, options.resizeEditor);
+			showAceBackedEditorMode(controller);
 		}
-		options.updateToolbar(controller);
+		updateTextViewerToolbar(controller);
 		if (previousMode !== mode && previousLayout === LAYOUT_EXPANDED) {
 			expandTextViewer(controller);
 		}
@@ -818,15 +817,14 @@
 	 * Shows the Ace editor panel for an Ace-backed controller.
 	 *
 	 * @param {object} controller Text viewer controller.
-	 * @param {Function} resizeEditor Editor resize callback.
 	 * @returns {void}
 	 */
-	function showAceBackedEditorMode(controller, resizeEditor) {
+	function showAceBackedEditorMode(controller) {
 		controller.$control.hide();
 		controller.$rawPanel.css('display', 'none');
 		controller.$expandLink.hide();
 		controller.$viewer.css('display', 'flex');
-		resizeEditor(controller);
+		resizeTextViewerEditor(controller);
 	}
 
 	/**
@@ -843,15 +841,14 @@
 	 * Restores the visible panel for an Ace-backed controller.
 	 *
 	 * @param {object} controller Text viewer controller.
-	 * @param {Function} resizeEditor Editor resize callback.
 	 * @returns {void}
 	 */
-	function restoreAceBackedVisibleMode(controller, resizeEditor) {
+	function restoreAceBackedVisibleMode(controller) {
 		if (controller.mode === VIEW_RAW) {
 			showAceBackedRawMode(controller);
 			return;
 		}
-		showAceBackedEditorMode(controller, resizeEditor);
+		showAceBackedEditorMode(controller);
 	}
 
 	/**
@@ -870,18 +867,6 @@
 			return (controller.editor.session.getScreenLength() * lineHeight) + 24;
 		}
 		return MIN_MARKDOWN_HEIGHT;
-	}
-
-	/**
-	 * Resizes an Ace editor with its native resize method.
-	 *
-	 * @param {object} controller Text viewer controller.
-	 * @returns {void}
-	 */
-	function resizeAceEditor(controller) {
-		if (controller.editor) {
-			controller.editor.resize();
-		}
 	}
 
 	/**
@@ -957,13 +942,14 @@
 			stateKey: fieldName,
 			editorKey: fieldName,
 			status: !isMarkdown,
-			buildController: isJson ? extendJsonController : extendAceTextController,
+			buildController: extendAceBackedController,
 			mount: mountAceTextViewer,
-			setMode: isJson ? setJsonMode : setAceTextMode,
+			setMode: setAceBackedMode,
 			syncFromEditor: isJson ? syncJsonFromEditor : syncAceTextFromEditor,
 			normalizeEditor: isJson ? normalizeJsonEditor : normalizeAceTextEditor,
 			renderFromControl: isJson ? renderJsonFromControl : renderAceTextFromControl,
 			renderFallback: isJson ? renderJsonFallback : renderAceTextFallback,
+			normalizes: isJson || !!((ACE_TEXT_MODES[mode] || {}).normalizes),
 		};
 		if (isMarkdown) {
 			spec.initialMode = editorOnly ? VIEW_MARKDOWN : getInitialMode($control, mode, modeConfig.initialMode);
@@ -1122,70 +1108,35 @@
 	}
 
 	/**
-	 * Extends a base controller with JSON behavior.
+	 * Extends a base controller with shared Ace-backed behavior.
 	 *
 	 * @param {object} controller Text viewer controller.
 	 * @param {object} spec Controller specification.
 	 * @param {jQuery} $status Validation status indicator.
 	 * @returns {void}
 	 */
-	function extendJsonController(controller, spec, $status) {
-		const storageFormat = controller.$control.is('textarea') && spec.modeConfig.format !== 'compact' ? 'pretty' : 'compact';
-		$.extend(controller, {
-			$status: $status,
-			jsonOnly: spec.editorOnly,
-			displayFormat: 'pretty',
-			storageFormat: storageFormat,
-			indent: spec.modeConfig.indent || 2,
-			mode: spec.initialMode,
-			getActivePanel: function () { return getJsonActivePanel(controller); },
-			getPanelSet: function () { return controller.$viewer.add(controller.$rawPanel); },
-			getContentHeight: function () { return getJsonContentHeight(controller); },
-			setHeight: function (height, userResize) { setTextViewerHeight(controller, height, userResize !== false); },
-			syncSize: function (captureHeight) { syncTextViewerNormalSize(controller, captureHeight); },
-			restoreVisibleMode: function () { restoreJsonVisibleMode(controller); },
-			setMode: function (nextMode) { setJsonMode(controller, nextMode); },
-			updateToolbar: function () { updateJsonToolbar(controller); },
-			isPanelMode: function () { return controller.mode === VIEW_JSON || (controller.mode === VIEW_RAW && controller.canExpandRaw); },
-			isThemeableMode: function () { return controller.mode === VIEW_JSON; },
-			defaultMode: spec.defaultMode,
-			updatingEditor: false,
-			updatingControl: false,
-			skipNextControlRender: false,
-			editorChangeGeneration: 0,
-			suppressedEditorChangeGeneration: null,
-		});
-	}
-
-	/**
-	 * Extends a base controller with generic Ace text behavior.
-	 *
-	 * @param {object} controller Text viewer controller.
-	 * @param {object} spec Controller specification.
-	 * @param {jQuery} $status Validation status indicator.
-	 * @returns {void}
-	 */
-	function extendAceTextController(controller, spec, $status) {
-		const modeMeta = ACE_TEXT_MODES[spec.mode] || { normalizes: false };
+	function extendAceBackedController(controller, spec, $status) {
 		const storageFormat = controller.$control.is('textarea') && spec.modeConfig.format !== 'compact' ? 'pretty' : 'compact';
 		$.extend(controller, {
 			$status: $status,
 			aceMode: spec.mode,
 			modeLabel: spec.modeConfig.label || getModeLabel(spec.mode),
 			editorOnly: spec.editorOnly,
-			normalizes: !!modeMeta.normalizes,
+			normalizes: !!spec.normalizes,
 			displayFormat: 'pretty',
 			storageFormat: storageFormat,
 			indent: spec.modeConfig.indent || 2,
 			mode: spec.initialMode,
-			getActivePanel: function () { return getAceTextActivePanel(controller); },
+			renderFromControl: function () { spec.renderFromControl(controller); },
+			normalizeEditor: function () { spec.normalizeEditor(controller); },
+			getActivePanel: function () { return getAceBackedActivePanel(controller); },
 			getPanelSet: function () { return controller.$viewer.add(controller.$rawPanel); },
-			getContentHeight: function () { return getAceTextContentHeight(controller); },
+			getContentHeight: function () { return getAceBackedContentHeight(controller); },
 			setHeight: function (height, userResize) { setTextViewerHeight(controller, height, userResize !== false); },
 			syncSize: function (captureHeight) { syncTextViewerNormalSize(controller, captureHeight); },
-			restoreVisibleMode: function () { restoreAceTextVisibleMode(controller); },
-			setMode: function (nextMode) { setAceTextMode(controller, nextMode); },
-			updateToolbar: function () { updateAceTextToolbar(controller); },
+			restoreVisibleMode: function () { restoreAceBackedVisibleMode(controller); },
+			setMode: function (nextMode) { setAceBackedMode(controller, nextMode); },
+			updateToolbar: function () { updateTextViewerToolbar(controller); },
 			isPanelMode: function () { return controller.mode === controller.aceMode || (controller.mode === VIEW_RAW && controller.canExpandRaw); },
 			isThemeableMode: function () { return controller.mode === controller.aceMode; },
 			defaultMode: spec.defaultMode,
@@ -2248,64 +2199,6 @@
 	}
 
 	/**
-	 * Sets the visible JSON field mode.
-	 *
-	 * @param {object} controller JSON controller.
-	 * @param {string} mode Desired mode.
-	 * @returns {void}
-	 */
-	function setJsonMode(controller, mode) {
-		setAceBackedMode(controller, mode, {
-			editorMode: VIEW_JSON,
-			editorOnlyProperty: 'jsonOnly',
-			renderFromControl: renderJsonFromControl,
-			normalizeEditor: normalizeJsonEditor,
-			resizeEditor: resizeAceEditor,
-			updateToolbar: updateJsonToolbar,
-		});
-	}
-
-	/**
-	 * Updates JSON toolbar active state.
-	 *
-	 * @param {object} controller JSON controller.
-	 * @returns {void}
-	 */
-	function updateJsonToolbar(controller) {
-		updateTextViewerToolbar(controller);
-	}
-
-	/**
-	 * Returns the active enhanced JSON panel.
-	 *
-	 * @param {object} controller JSON controller.
-	 * @returns {jQuery}
-	 */
-	function getJsonActivePanel(controller) {
-		return getAceBackedActivePanel(controller);
-	}
-
-	/**
-	 * Restores the visible panel for the current JSON mode.
-	 *
-	 * @param {object} controller JSON controller.
-	 * @returns {void}
-	 */
-	function restoreJsonVisibleMode(controller) {
-		restoreAceBackedVisibleMode(controller, resizeAceEditor);
-	}
-
-	/**
-	 * Calculates the content height for the active JSON panel.
-	 *
-	 * @param {object} controller JSON controller.
-	 * @returns {number}
-	 */
-	function getJsonContentHeight(controller) {
-		return getAceBackedContentHeight(controller);
-	}
-
-	/**
 	 * Renders the raw field value into Ace.
 	 *
 	 * @param {object} controller JSON controller.
@@ -2320,7 +2213,7 @@
 		controller.updatingEditor = true;
 		setJsonEditorValue(controller, formatted.text);
 		controller.updatingEditor = false;
-		controller.editor.resize();
+		resizeTextViewerEditor(controller);
 	}
 
 	/**
@@ -2381,7 +2274,7 @@
 		setJsonEditorValue(controller, formatted.text);
 		controller.updatingEditor = false;
 		syncJsonFromEditor(controller);
-		controller.editor.resize();
+		resizeTextViewerEditor(controller);
 	}
 
 	/**
@@ -2412,64 +2305,6 @@
 				.attr('aria-label', 'Invalid JSON: ' + formatted.error)
 				.html($('<i/>', { class: 'fa-solid fa-triangle-exclamation text-warning rc-text-viewer-json-status__invalid', 'aria-hidden': 'true' }));
 		}
-	}
-
-	/**
-	 * Sets the visible generic Ace text mode.
-	 *
-	 * @param {object} controller Ace text controller.
-	 * @param {string} mode Desired mode.
-	 * @returns {void}
-	 */
-	function setAceTextMode(controller, mode) {
-		setAceBackedMode(controller, mode, {
-			editorMode: controller.aceMode,
-			editorOnlyProperty: 'editorOnly',
-			renderFromControl: renderAceTextFromControl,
-			normalizeEditor: normalizeAceTextEditor,
-			resizeEditor: resizeTextViewerEditor,
-			updateToolbar: updateAceTextToolbar,
-		});
-	}
-
-	/**
-	 * Updates generic Ace text toolbar state.
-	 *
-	 * @param {object} controller Ace text controller.
-	 * @returns {void}
-	 */
-	function updateAceTextToolbar(controller) {
-		updateTextViewerToolbar(controller);
-	}
-
-	/**
-	 * Returns the active generic Ace text panel.
-	 *
-	 * @param {object} controller Ace text controller.
-	 * @returns {jQuery}
-	 */
-	function getAceTextActivePanel(controller) {
-		return getAceBackedActivePanel(controller);
-	}
-
-	/**
-	 * Restores the visible panel for a generic Ace text mode.
-	 *
-	 * @param {object} controller Ace text controller.
-	 * @returns {void}
-	 */
-	function restoreAceTextVisibleMode(controller) {
-		restoreAceBackedVisibleMode(controller, resizeTextViewerEditor);
-	}
-
-	/**
-	 * Calculates content height for a generic Ace text panel.
-	 *
-	 * @param {object} controller Ace text controller.
-	 * @returns {number}
-	 */
-	function getAceTextContentHeight(controller) {
-		return getAceBackedContentHeight(controller);
 	}
 
 	/**
