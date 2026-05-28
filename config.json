@@ -25,7 +25,7 @@
 		},
 		{
 			"tag": "@ENHANCED-TEXT-MARKDOWN",
-			"description": "Markdown editor and HTML preview for Notes fields. Params: initial, height, scope, md-only. See documentation."
+			"description": "Markdown editor and HTML preview for Notes fields. Params: initial, height, scope, markdown-only. See documentation."
 		},
 		{
 			"tag": "@ENHANCED-TEXT-CSS",
