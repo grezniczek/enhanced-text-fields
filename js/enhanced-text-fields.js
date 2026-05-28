@@ -1607,10 +1607,7 @@
 	 * @returns {Promise<never>}
 	 */
 	function rejectFileViewerResponse(message) {
-		showFileViewerErrorDialog(message);
-		const error = new Error(message);
-		error.dialogShown = true;
-		return Promise.reject(error);
+		return Promise.reject(new Error(message));
 	}
 
 	/**
@@ -1620,7 +1617,7 @@
 	 * @returns {void}
 	 */
 	function showFileViewerErrorDialog(message) {
-		const safeMessage = $('<div/>').text(message || 'Unable to load file.').html();
+		const safeMessage = $('<div class="red"></div>').text(message || 'Unable to load file.');
 		if (typeof global.simpleDialog === 'function') {
 			global.simpleDialog(safeMessage, 'File preview unavailable');
 			return;
@@ -1728,15 +1725,9 @@
 	 */
 	function setFileViewerError(controller, error) {
 		const message = error && error.message ? error.message : String(error || 'Unable to load file.');
-		if (!error || !error.dialogShown) {
-			showFileViewerErrorDialog(message);
-		}
-		controller.$viewer.addClass('rc-text-viewer--invalid');
-		controller.$previewContent.html($('<pre/>').text(message));
-		if (controller.editor) {
-			controller.editor.setValue(message, -1);
-		}
-		LOGGER.warn('File viewer load failed', controller.fieldName, error);
+		closeFileViewer(controller);
+		showFileViewerErrorDialog(message);
+		LOGGER.warn(`File viewer load failed for field '${controller.fieldName}'.`, error);
 	}
 
 	/**

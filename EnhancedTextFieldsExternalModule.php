@@ -356,7 +356,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			}
 
 			// All valid, get content
-			// list ($_, $_, $content) = \Files::getEdocContentsAttributes($docId);
+			list ($_, $_, $content) = \Files::getEdocContentsAttributes($docId);
 
 		} while (false);
 
