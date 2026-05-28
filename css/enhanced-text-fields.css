@@ -79,17 +79,17 @@
 	min-height: 0;
 }
 
-.rc-text-viewer-json-status {
+.rc-text-viewer-status {
 	display: inline-flex;
 	align-items: center;
 	min-width: 14px;
 }
 
-.rc-text-viewer-json-status__valid {
+.rc-text-viewer-status__valid {
 	color: #6b7280;
 }
 
-.rc-text-viewer-json-status__invalid {
+.rc-text-viewer-status__invalid {
 	color: #b45309;
 }
 

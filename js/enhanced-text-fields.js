@@ -22,18 +22,10 @@
 		'xml',
 		'yaml',
 	];
-	const ACE_TEXT_MODES = {
-		text: { normalizes: false },
-		ini: { normalizes: false },
-		css: { normalizes: true },
-		r: { normalizes: false },
-		xml: { normalizes: true },
-		yaml: { normalizes: false },
-	};
 	const LAYOUT_NORMAL = 'normal';
 	const LAYOUT_EXPANDED = 'expanded';
 	const LAYOUT_FULLSCREEN = 'fullscreen';
-	const MIN_MARKDOWN_HEIGHT = 100;
+	const MIN_HEIGHT = 100;
 	const CONTROLLED_FIELD_CLASS = 'rc-text-viewer-controlled-field';
 	const MODE_ATTRIBUTE = 'data-rc-text-viewer-mode';
 	const MODE_SELECTOR = '[' + MODE_ATTRIBUTE + ']';
@@ -466,7 +458,7 @@
 			canExpandToRowWidth: field.rowConfig === 'split',
 			canExpandRaw: $control.is('textarea'),
 			layout: LAYOUT_NORMAL,
-			normalHeight: initialHeight || $control.outerHeight() || MIN_MARKDOWN_HEIGHT,
+			normalHeight: initialHeight || $control.outerHeight() || MIN_HEIGHT,
 			normalWidth: $control.outerWidth(),
 			expandedHeight: null,
 			fullscreenHeight: null,
@@ -501,7 +493,7 @@
 	 */
 	function getInitialViewerHeight(modeConfig) {
 		return Number.isInteger(modeConfig.height) && modeConfig.height > 0
-			? Math.max(modeConfig.height, MIN_MARKDOWN_HEIGHT)
+			? Math.max(modeConfig.height, MIN_HEIGHT)
 			: null;
 	}
 
@@ -730,21 +722,7 @@
 	}
 
 	/**
-	 * Renders a JSON fallback when Ace cannot load.
-	 *
-	 * @param {object} controller JSON controller.
-	 * @param {Error} error Load error.
-	 * @returns {void}
-	 */
-	function renderJsonFallback(controller, error) {
-		const formatted = formatJson(controller.$control.val() || '', controller.displayFormat, controller.indent);
-		controller.$viewer.html($('<pre/>', { class: 'rc-text-viewer__fallback' }).text(formatted.text));
-		setJsonStatus(controller, formatted);
-		LOGGER.warn('Ace failed to load', error);
-	}
-
-	/**
-	 * Renders a generic text fallback when Ace cannot load.
+	 * Renders a text fallback when Ace cannot load.
 	 *
 	 * @param {object} controller Ace text controller.
 	 * @param {Error} error Load error.
@@ -860,13 +838,13 @@
 	function getAceBackedContentHeight(controller) {
 		if (controller.mode === VIEW_RAW && controller.canExpandRaw) {
 			const control = controller.$control[0];
-			return control ? control.scrollHeight + controller.$rawResizeHandle.outerHeight() : MIN_MARKDOWN_HEIGHT;
+			return control ? control.scrollHeight + controller.$rawResizeHandle.outerHeight() : MIN_HEIGHT;
 		}
 		if (controller.editor) {
 			const lineHeight = controller.editor.renderer.lineHeight || 16;
 			return (controller.editor.session.getScreenLength() * lineHeight) + 24;
 		}
-		return MIN_MARKDOWN_HEIGHT;
+		return MIN_HEIGHT;
 	}
 
 	/**
@@ -927,7 +905,6 @@
 	function getEnhancedTextSpec($control, field, mode) {
 		const fieldName = field.name;
 		const isMarkdown = mode === VIEW_MARKDOWN;
-		const isJson = mode === VIEW_JSON;
 		const modeConfig = field[mode] || {};
 		const editorOnly = !!modeConfig.editorOnly;
 		const spec = {
@@ -945,11 +922,11 @@
 			buildController: extendAceBackedController,
 			mount: mountAceTextViewer,
 			setMode: setAceBackedMode,
-			syncFromEditor: isJson ? syncJsonFromEditor : syncAceTextFromEditor,
-			normalizeEditor: isJson ? normalizeJsonEditor : normalizeAceTextEditor,
-			renderFromControl: isJson ? renderJsonFromControl : renderAceTextFromControl,
-			renderFallback: isJson ? renderJsonFallback : renderAceTextFallback,
-			normalizes: isJson || !!((ACE_TEXT_MODES[mode] || {}).normalizes),
+			syncFromEditor: syncAceTextFromEditor,
+			normalizeEditor: normalizeAceTextEditor,
+			renderFromControl: renderAceTextFromControl,
+			renderFallback: renderAceTextFallback,
+			normalizes: modeConfig.normalizes,
 		};
 		if (isMarkdown) {
 			spec.initialMode = editorOnly ? VIEW_MARKDOWN : getInitialMode($control, mode, modeConfig.initialMode);
@@ -976,7 +953,7 @@
 		const spec = getEnhancedTextSpec($control, field, mode);
 		const toolbarParts = createToolbarParts(fieldName, field.rowConfig === 'split');
 		const $editability = createEditStateIndicator(!!field.readonly);
-		const $status = spec.status ? $('<span/>', { class: 'rc-text-viewer-json-status', 'aria-live': 'polite' }) : $();
+		const $status = spec.status ? $('<span/>', { class: 'rc-text-viewer-status', 'aria-live': 'polite' }) : $();
 		const $viewer = $('<div/>', {
 			class: VIEWER_CLASS,
 			'data-rc-text-viewer-field': fieldName,
@@ -1379,7 +1356,7 @@
 					controller.fitToContentRestoreHeight = null;
 					resized = true;
 				}
-				const nextHeight = Math.max(MIN_MARKDOWN_HEIGHT, startHeight + (moveEv.pageY - startY));
+				const nextHeight = Math.max(MIN_HEIGHT, startHeight + (moveEv.pageY - startY));
 				controller.setHeight(nextHeight, true);
 			});
 			$(document).on('mouseup' + resizeNamespace, function () {
@@ -1421,10 +1398,10 @@
 	 * @returns {void}
 	 */
 	function setTextViewerHeight(controller, height, userResize) {
-		height = Math.max(MIN_MARKDOWN_HEIGHT, Math.floor(height));
+		height = Math.max(MIN_HEIGHT, Math.floor(height));
 		controller.getPanelSet().css({
 			height: height + 'px',
-			'min-height': MIN_MARKDOWN_HEIGHT + 'px',
+			'min-height': MIN_HEIGHT + 'px',
 		});
 		controller.$control.css('min-height', '');
 		controller.$editor.css('min-height', '');
@@ -1490,7 +1467,7 @@
 		const measuredHeight = controller.$control.is(':visible') ? controller.$control.outerHeight() : 0;
 		const width = measuredWidth || controller.normalWidth || controller.$control.parent().width() || 200;
 		const cssWidth = controller.canExpandToRowWidth ? width + 'px' : '100%';
-		const height = Math.max(controller.userHeight || measuredHeight || controller.normalHeight || MIN_MARKDOWN_HEIGHT, MIN_MARKDOWN_HEIGHT);
+		const height = Math.max(controller.userHeight || controller.normalHeight || measuredHeight || MIN_HEIGHT, MIN_HEIGHT);
 		if (measuredWidth) {
 			controller.normalWidth = measuredWidth;
 		}
@@ -1504,21 +1481,21 @@
 		controller.$viewer.css({
 			width: cssWidth,
 			height: height + 'px',
-			'min-height': MIN_MARKDOWN_HEIGHT + 'px',
+			'min-height': MIN_HEIGHT + 'px',
 			'margin-left': '',
 		});
 		if (controller.$editorViewer && controller.$editorViewer.length) {
 			controller.$editorViewer.css({
 				width: cssWidth,
 				height: height + 'px',
-				'min-height': MIN_MARKDOWN_HEIGHT + 'px',
+				'min-height': MIN_HEIGHT + 'px',
 				'margin-left': '',
 			});
 		}
 		controller.$rawPanel.css({
 			width: cssWidth,
 			height: height + 'px',
-			'min-height': MIN_MARKDOWN_HEIGHT + 'px',
+			'min-height': MIN_HEIGHT + 'px',
 			'margin-left': '',
 		});
 		controller.$control.css('min-height', '');
@@ -1565,7 +1542,7 @@
 		$panel.css({
 			width: '100%',
 			height: expandedHeight + 'px',
-			'min-height': MIN_MARKDOWN_HEIGHT + 'px',
+			'min-height': MIN_HEIGHT + 'px',
 			'margin-left': '',
 		});
 		controller.layout = LAYOUT_EXPANDED;
@@ -1821,7 +1798,7 @@
 	function getMarkdownContentHeight(controller) {
 		if (controller.mode === VIEW_RAW) {
 			const control = controller.$control[0];
-			return control ? control.scrollHeight + controller.$rawResizeHandle.outerHeight() : MIN_MARKDOWN_HEIGHT;
+			return control ? control.scrollHeight + controller.$rawResizeHandle.outerHeight() : MIN_HEIGHT;
 		}
 		if (controller.mode === VIEW_MARKDOWN && controller.editor) {
 			const lineHeight = controller.editor.renderer.lineHeight || 16;
@@ -1830,7 +1807,7 @@
 		if (controller.mode === VIEW_HTML) {
 			return controller.$viewerContent.outerHeight(true) + controller.$resizeHandle.outerHeight() + 24;
 		}
-		return MIN_MARKDOWN_HEIGHT;
+		return MIN_HEIGHT;
 	}
 
 	/**
@@ -1851,12 +1828,12 @@
 	 */
 	function toggleTextViewerContentHeight(controller) {
 		if (controller.fitToContentActive) {
-			controller.setHeight(controller.fitToContentRestoreHeight || MIN_MARKDOWN_HEIGHT, true);
+			controller.setHeight(controller.fitToContentRestoreHeight || MIN_HEIGHT, true);
 			controller.fitToContentActive = false;
 			controller.fitToContentRestoreHeight = null;
 			return;
 		}
-		controller.fitToContentRestoreHeight = Math.max(controller.getActivePanel().outerHeight() || MIN_MARKDOWN_HEIGHT, MIN_MARKDOWN_HEIGHT);
+		controller.fitToContentRestoreHeight = Math.max(controller.getActivePanel().outerHeight() || MIN_HEIGHT, MIN_HEIGHT);
 		expandTextViewerToContent(controller);
 		controller.fitToContentActive = true;
 	}
@@ -2028,6 +2005,32 @@
 	}
 
 	/**
+	 * Formats text for an Ace language mode.
+	 *
+	 * @param {string} raw Raw editor value.
+	 * @param {string} mode Ace language mode key.
+	 * @param {string} format Storage/display format.
+	 * @param {number|string} indent Indentation config.
+	 * @returns {object}
+	 */
+	function formatAceText(raw, mode, format, indent) {
+		const text = String(raw || '');
+		if (text.trim() === '') {
+			return { ok: true, empty: true, text: '' };
+		}
+		if (mode === 'css') {
+			return { ok: true, empty: false, text: formatCss(text, format, indent) };
+		}
+		if (mode === 'xml') {
+			return formatXml(text, format, indent);
+		}
+		if (mode === 'json') {
+			return formatJson(text, format, indent);
+		}
+		return { ok: true, empty: false, text: text };
+	}
+
+	/**
 	 * Returns formatted JSON text and validation state.
 	 *
 	 * @param {string} raw Raw field value.
@@ -2035,12 +2038,8 @@
 	 * @returns {object}
 	 */
 	function formatJson(raw, format, indent) {
-		const text = String(raw || '').trim();
-		if (text === '') {
-			return { ok: true, empty: true, text: '' };
-		}
 		try {
-			const parsed = JSON.parse(text);
+			const parsed = JSON.parse(raw);
 			return { ok: true, empty: false, text: stringifyJson(parsed, format, indent) };
 		}
 		catch (e) {
@@ -2074,29 +2073,6 @@
 			return new Array(Math.min(spaces, 8) + 1).join(' ');
 		}
 		return '  ';
-	}
-
-	/**
-	 * Formats text for an Ace language mode.
-	 *
-	 * @param {string} raw Raw editor value.
-	 * @param {string} mode Ace language mode key.
-	 * @param {string} format Storage/display format.
-	 * @param {number|string} indent Indentation config.
-	 * @returns {object}
-	 */
-	function formatAceText(raw, mode, format, indent) {
-		const text = String(raw || '');
-		if (text.trim() === '') {
-			return { ok: true, empty: true, text: '' };
-		}
-		if (mode === 'css') {
-			return { ok: true, empty: false, text: formatCss(text, format, indent) };
-		}
-		if (mode === 'xml') {
-			return formatXml(text, format, indent);
-		}
-		return { ok: true, empty: false, text: text };
 	}
 
 	/**
@@ -2199,115 +2175,6 @@
 	}
 
 	/**
-	 * Renders the raw field value into Ace.
-	 *
-	 * @param {object} controller JSON controller.
-	 * @returns {void}
-	 */
-	function renderJsonFromControl(controller) {
-		const formatted = formatJson(controller.$control.val() || '', controller.displayFormat, controller.indent);
-		setJsonStatus(controller, formatted);
-		if (!controller.editor) {
-			return;
-		}
-		controller.updatingEditor = true;
-		setJsonEditorValue(controller, formatted.text);
-		controller.updatingEditor = false;
-		resizeTextViewerEditor(controller);
-	}
-
-	/**
-	 * Sets JSON editor text without treating the resulting Ace event as a user edit.
-	 *
-	 * @param {object} controller JSON controller.
-	 * @param {string} value Editor value.
-	 * @returns {void}
-	 */
-	function setJsonEditorValue(controller, value) {
-		controller.editorChangeGeneration += 1;
-		controller.suppressedEditorChangeGeneration = controller.editorChangeGeneration;
-		controller.editor.setValue(value, -1);
-	}
-
-	/**
-	 * Syncs valid Ace JSON back into the raw REDCap field.
-	 *
-	 * @param {object} controller JSON controller.
-	 * @returns {void}
-	 */
-	function syncJsonFromEditor(controller) {
-		if (!controller.editor || controller.updatingEditor) {
-			return;
-		}
-		const raw = controller.editor.getValue();
-		const displayFormatted = formatJson(raw, controller.displayFormat, controller.indent);
-		setJsonStatus(controller, displayFormatted);
-		if (!displayFormatted.ok || controller.editor.getReadOnly()) {
-			return;
-		}
-		const storageFormatted = formatJson(raw, controller.storageFormat, controller.indent);
-		if ((controller.$control.val() || '') === storageFormatted.text) {
-			return;
-		}
-		controller.skipNextControlRender = true;
-		controller.updatingControl = true;
-		controller.$control.val(storageFormatted.text).trigger('change');
-		controller.updatingControl = false;
-	}
-
-	/**
-	 * Pretty-normalizes valid JSON editor content without changing storage policy.
-	 *
-	 * @param {object} controller JSON controller.
-	 * @returns {void}
-	 */
-	function normalizeJsonEditor(controller) {
-		if (!controller.editor || controller.updatingEditor) {
-			return;
-		}
-		const formatted = formatJson(controller.editor.getValue(), controller.displayFormat, controller.indent);
-		setJsonStatus(controller, formatted);
-		if (!formatted.ok) {
-			return;
-		}
-		controller.updatingEditor = true;
-		setJsonEditorValue(controller, formatted.text);
-		controller.updatingEditor = false;
-		syncJsonFromEditor(controller);
-		resizeTextViewerEditor(controller);
-	}
-
-	/**
-	 * Updates JSON validation status.
-	 *
-	 * @param {object} controller JSON controller.
-	 * @param {object} formatted JSON format result.
-	 * @returns {void}
-	 */
-	function setJsonStatus(controller, formatted) {
-		controller.$viewer.toggleClass('rc-text-viewer--invalid', !formatted.ok);
-		controller.$toolbar.toggleClass('rc-text-viewer--invalid', !formatted.ok);
-		if (formatted.empty) {
-			controller.$status
-				.attr('title', 'JSON is empty')
-				.attr('aria-label', 'JSON is empty')
-				.html('');
-		}
-		else if (formatted.ok) {
-			controller.$status
-				.attr('title', 'Valid JSON')
-				.attr('aria-label', 'Valid JSON')
-				.html($('<i/>', { class: 'fa-solid fa-check text-muted rc-text-viewer-json-status__valid', 'aria-hidden': 'true' }));
-		}
-		else {
-			controller.$status
-				.attr('title', 'Invalid JSON: ' + formatted.error)
-				.attr('aria-label', 'Invalid JSON: ' + formatted.error)
-				.html($('<i/>', { class: 'fa-solid fa-triangle-exclamation text-warning rc-text-viewer-json-status__invalid', 'aria-hidden': 'true' }));
-		}
-	}
-
-	/**
 	 * Renders the raw field value into a generic Ace editor.
 	 *
 	 * @param {object} controller Ace text controller.
@@ -2326,7 +2193,7 @@
 	}
 
 	/**
-	 * Sets generic Ace editor text without treating the event as a user edit.
+	 * Sets Ace editor text without treating the event as a user edit.
 	 *
 	 * @param {object} controller Ace text controller.
 	 * @param {string} value Editor value.
@@ -2339,7 +2206,7 @@
 	}
 
 	/**
-	 * Syncs generic Ace editor content into the raw REDCap field.
+	 * Syncs Ace editor content into the raw REDCap field.
 	 *
 	 * @param {object} controller Ace text controller.
 	 * @returns {void}
@@ -2365,7 +2232,7 @@
 	}
 
 	/**
-	 * Normalizes generic Ace editor content when supported by the mode.
+	 * Normalizes Ace editor content when supported by the mode.
 	 *
 	 * @param {object} controller Ace text controller.
 	 * @returns {void}
@@ -2404,13 +2271,13 @@
 			controller.$status
 				.attr('title', 'Valid ' + controller.modeLabel)
 				.attr('aria-label', 'Valid ' + controller.modeLabel)
-				.html($('<i/>', { class: 'fa-solid fa-check text-muted rc-text-viewer-json-status__valid', 'aria-hidden': 'true' }));
+				.html($('<i/>', { class: 'fa-solid fa-check text-muted rc-text-viewer-status__valid', 'aria-hidden': 'true' }));
 			return;
 		}
 		controller.$status
 			.attr('title', 'Invalid ' + controller.modeLabel + ': ' + formatted.error)
 			.attr('aria-label', 'Invalid ' + controller.modeLabel + ': ' + formatted.error)
-			.html($('<i/>', { class: 'fa-solid fa-triangle-exclamation text-warning rc-text-viewer-json-status__invalid', 'aria-hidden': 'true' }));
+			.html($('<i/>', { class: 'fa-solid fa-triangle-exclamation text-warning rc-text-viewer-status__invalid', 'aria-hidden': 'true' }));
 	}
 
 	/**

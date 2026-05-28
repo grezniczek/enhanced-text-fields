@@ -457,6 +457,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			'format' => 'pretty',
 			'indent' => 2,
 			'mode' => $mode,
+			'normalizes' => in_array($mode, ['css', 'json', 'xml'], true),
 			'scope' => 'form',
 		);
 
