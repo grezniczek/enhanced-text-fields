@@ -1,4 +1,4 @@
-## Changelog for Text Viewers EM
+## Changelog for Enhanced Text Fields EM
 
 Version | Description
 ------- | ----------------

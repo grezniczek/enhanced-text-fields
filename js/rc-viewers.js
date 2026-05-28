@@ -3,7 +3,7 @@
 	'use strict';
 
 	const NS = 'DE_RUB_SEG_TextViewersEM';
-	const EM_NAME = 'Text Viewers';
+	const EM_NAME = 'Enhanced Text Fields';
 	const VIEW_RAW = 'raw';
 	const VIEW_MARKDOWN = 'markdown';
 	const VIEW_HTML = 'html';

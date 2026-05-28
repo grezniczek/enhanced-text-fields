@@ -1,7 +1,7 @@
 {
-	"name": "Text Viewers",
+	"name": "Enhanced Text Fields",
 	"namespace": "DE\\RUB\\SEG\\TextViewersExternalModule",
-	"description": "Adds live JSON and Markdown viewers to text fields with matching action tags.",
+	"description": "Enhances REDCap text fields with JSON and Markdown editing, validation, formatting, and preview tools.",
 	"documentation": "README.md",
 	"authors": [
 		{
@@ -13,16 +13,12 @@
 	"framework-version": 16,
 	"action-tags": [
 		{
-			"tag": "@JSON-VIEWER",
-			"description": "Render text and Notes field values as editable JSON in Ace on data entry forms and survey pages. Optional quoted parameters: initial:json, initial:raw, height:200, format:pretty, format:compact, json-only."
+			"tag": "@ENHANCED-TEXT-JSON",
+			"description": "Enhance text and Notes field values with editable JSON in Ace on data entry forms and survey pages. Optional quoted parameters: initial:json, initial:raw, height:200, format:pretty, format:compact, json-only."
 		},
 		{
-			"tag": "@MARKDOWN-VIEWER",
-			"description": "Render Notes field values as Markdown editor and HTML preview on data entry forms and survey pages. Optional quoted parameters: initial:md, initial:html, initial:raw, height:200, md-only."
-		},
-		{
-			"tag": "@FILE-TEXT-VIEWER",
-			"description": "Reserved for MD/JSON viewing of uploaded files."
+			"tag": "@ENHANCED-TEXT-MARKDOWN",
+			"description": "Enhance Notes field values with Markdown editing and HTML preview on data entry forms and survey pages. Optional quoted parameters: initial:md, initial:html, initial:raw, height:200, md-only."
 		}
 	],
 	"project-settings": [

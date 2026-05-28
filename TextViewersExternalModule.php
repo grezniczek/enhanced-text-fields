@@ -29,7 +29,7 @@ spl_autoload_register(
 );
 
 /**
- * External Module entry point for text-based field viewers.
+ * External Module entry point for enhanced text fields.
  */
 class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
 {
@@ -41,18 +41,18 @@ class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
 	private $js_debug = false;
 
 	/**
-	 * REDCap action tag that enables the JSON viewer.
+	 * REDCap action tag that enables JSON text enhancements.
 	 *
 	 * @var string
 	 */
-	const AT_JSON_VIEWER = "@JSON-VIEWER";
+	const AT_JSON_VIEWER = "@ENHANCED-TEXT-JSON";
 
 	/**
-	 * REDCap action tag that enables the Markdown viewer.
+	 * REDCap action tag that enables Markdown text enhancements.
 	 *
 	 * @var string
 	 */
-	const AT_MARKDOWN_VIEWER = "@MARKDOWN-VIEWER";
+	const AT_MARKDOWN_VIEWER = "@ENHANCED-TEXT-MARKDOWN";
 
 	#region Hooks
 
@@ -241,7 +241,7 @@ class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
 	}
 
 	/**
-	 * Parses @MARKDOWN-VIEWER parameters.
+	 * Parses @ENHANCED-TEXT-MARKDOWN parameters.
 	 *
 	 * @param mixed $params Raw action-tag parameter value.
 	 * @return array
@@ -303,7 +303,7 @@ class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
 	}
 
 	/**
-	 * Parses @JSON-VIEWER parameters.
+	 * Parses @ENHANCED-TEXT-JSON parameters.
 	 *
 	 * @param mixed $params Raw action-tag parameter value.
 	 * @return array
