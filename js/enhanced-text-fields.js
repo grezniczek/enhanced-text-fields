@@ -519,9 +519,6 @@
 			ev.preventDefault();
 			handleTextViewerAction(controller, $(this).attr('data-rc-text-viewer-action'));
 		});
-		$control.on('input change keyup', debounce(function () {
-			renderMarkdown(controller);
-		}, 100));
 		initTextViewerResizeHandles(controller);
 		initMarkdownEditor(controller, editorId, field);
 		$(global).on('resize', debounce(function () {
@@ -571,6 +568,9 @@
 
 		const previousMode = controller.mode;
 		const previousLayout = controller.layout;
+		if (previousMode === VIEW_RAW && mode !== VIEW_RAW) {
+			syncMarkdownFromRaw(controller);
+		}
 		if (previousMode !== mode && previousLayout !== LAYOUT_NORMAL) {
 			rememberTextViewerHeight(controller);
 			restoreTextViewerLayout(controller);
@@ -598,6 +598,19 @@
 		if (previousMode !== mode && previousLayout === LAYOUT_FULLSCREEN) {
 			fullscreenTextViewer(controller);
 		}
+	}
+
+	/**
+	 * Updates Markdown editor/preview from the raw field when leaving Raw mode.
+	 *
+	 * @param {object} controller Markdown controller.
+	 * @returns {void}
+	 */
+	function syncMarkdownFromRaw(controller) {
+		if (controller.editor && controller.editor.getValue() !== (controller.$control.val() || '')) {
+			controller.editor.setValue(controller.$control.val() || '', -1);
+		}
+		renderMarkdown(controller);
 	}
 
 	/**
@@ -1750,16 +1763,6 @@
 			ev.preventDefault();
 			handleTextViewerAction(controller, $(this).attr('data-rc-text-viewer-action'));
 		});
-		$control.on('input change keyup', debounce(function () {
-			if (controller.skipNextControlRender) {
-				controller.skipNextControlRender = false;
-				return;
-			}
-			if (!controller.updatingControl) {
-				renderJsonFromControl(controller);
-			}
-		}, 100));
-
 		ensureAce().then(function () {
 			const editor = createAceEditor(editorId, {
 				mode: VIEW_JSON,
@@ -1815,6 +1818,9 @@
 
 		const previousMode = controller.mode;
 		const previousLayout = controller.layout;
+		if (previousMode === VIEW_RAW && mode !== VIEW_RAW) {
+			renderJsonFromControl(controller);
+		}
 		if (previousMode !== mode && previousLayout !== LAYOUT_NORMAL) {
 			rememberTextViewerHeight(controller);
 			restoreTextViewerLayout(controller);
@@ -2176,16 +2182,6 @@
 			ev.preventDefault();
 			handleTextViewerAction(controller, $(this).attr('data-rc-text-viewer-action'));
 		});
-		$control.on('input change keyup', debounce(function () {
-			if (controller.skipNextControlRender) {
-				controller.skipNextControlRender = false;
-				return;
-			}
-			if (!controller.updatingControl) {
-				renderAceTextFromControl(controller);
-			}
-		}, 100));
-
 		ensureAce().then(function () {
 			const editor = createAceEditor(editorId, {
 				mode: mode,
@@ -2241,6 +2237,9 @@
 
 		const previousMode = controller.mode;
 		const previousLayout = controller.layout;
+		if (previousMode === VIEW_RAW && mode !== VIEW_RAW) {
+			renderAceTextFromControl(controller);
+		}
 		if (previousMode !== mode && previousLayout !== LAYOUT_NORMAL) {
 			rememberTextViewerHeight(controller);
 			restoreTextViewerLayout(controller);
