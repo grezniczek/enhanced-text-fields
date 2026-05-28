@@ -1,6 +1,6 @@
 <?php
 
-namespace DE\RUB\SEG\TextViewersExternalModule;
+namespace DE\RUB\SEG\EnhancedTextFieldsExternalModule;
 
 spl_autoload_register(
 	/**
@@ -31,7 +31,7 @@ spl_autoload_register(
 /**
  * External Module entry point for enhanced text fields.
  */
-class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
+class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternalModule
 {
 	/**
 	 * Whether browser-side debug logging should be enabled.
@@ -45,19 +45,19 @@ class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
 	 *
 	 * @var string
 	 */
-	const AT_JSON_VIEWER = "@ENHANCED-TEXT-JSON";
+	const AT_ENHANCED_TEXT_JSON = "@ENHANCED-TEXT-JSON";
 
 	/**
 	 * REDCap action tag that enables Markdown text enhancements.
 	 *
 	 * @var string
 	 */
-	const AT_MARKDOWN_VIEWER = "@ENHANCED-TEXT-MARKDOWN";
+	const AT_ENHANCED_TEXT_MARKDOWN = "@ENHANCED-TEXT-MARKDOWN";
 
 	#region Hooks
 
 	/**
-	 * Inject text viewers on regular data entry forms.
+	 * Inject enhanced text fields on regular data entry forms.
 	 *
 	 * @param int         $project_id      REDCap project id.
 	 * @param string|null $record          Current record id.
@@ -70,11 +70,11 @@ class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
 	function redcap_data_entry_form_top($project_id, $record, $instrument, $event_id, $group_id, $repeat_instance)
 	{
 		$Proj = $GLOBALS['Proj'];
-		$this->injectViewers($Proj, $record, $instrument, $event_id, $repeat_instance, false);
+		$this->injectEnhancedFields($Proj, $record, $instrument, $event_id, $repeat_instance, false);
 	}
 
 	/**
-	 * Inject text viewers on survey pages.
+	 * Inject enhanced text fields on survey pages.
 	 *
 	 * @param int         $project_id      REDCap project id.
 	 * @param string|null $record          Current record id.
@@ -89,13 +89,13 @@ class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
 	function redcap_survey_page_top($project_id, $record, $instrument, $event_id, $group_id, $survey_hash, $response_id, $repeat_instance)
 	{
 		$Proj = $GLOBALS['Proj'];
-		$this->injectViewers($Proj, $record, $instrument, $event_id, $repeat_instance, true);
+		$this->injectEnhancedFields($Proj, $record, $instrument, $event_id, $repeat_instance, true);
 	}
 
 	#endregion
 
 	/**
-	 * Finds tagged fields and injects all required CSS/JS for the current page.
+	 * Finds enhanced fields and injects all required CSS/JS for the current page.
 	 *
 	 * @param \Project    $Proj            REDCap project.
 	 * @param string|null $record          Current record id.
@@ -105,30 +105,30 @@ class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
 	 * @param bool        $is_survey       Whether the current page is a survey page.
 	 * @return void
 	 */
-	private function injectViewers($Proj, $record, $instrument, $event_id, $repeat_instance, $is_survey)
+	private function injectEnhancedFields($Proj, $record, $instrument, $event_id, $repeat_instance, $is_survey)
 	{
-		$viewer_fields = $this->getViewerFields($Proj, $record, $instrument, $event_id, $repeat_instance, $is_survey);
-		if (empty($viewer_fields)) {
+		$enhanced_fields = $this->getEnhancedFields($Proj, $record, $instrument, $event_id, $repeat_instance, $is_survey);
+		if (empty($enhanced_fields)) {
 			return;
 		}
-		$this->removeREDCapReadonly($Proj, $viewer_fields);
+		$this->removeREDCapReadonly($Proj, $enhanced_fields);
 
 		$this->js_debug = $this->getProjectSetting('javascript-debug') == '1';
 
 		$inject = InjectionHelper::init($this);
-		$has_markdown = $this->hasViewerType($viewer_fields, 'markdown');
+		$has_markdown = $this->hasEnhancementType($enhanced_fields, 'markdown');
 		// Build client config
 		$config = array(
 			'debug' => $this->js_debug,
 			'isSurvey' => $is_survey,
-			'fields' => $viewer_fields,
+			'fields' => $enhanced_fields,
 			'urls' => array(
 				'ace' => $this->getRedcapResourceUrl('Resources/js/Libraries/ace.js'),
 			),
 		);
 		$config_json = json_encode($config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
 
-		$inject->css('css/rc-viewers.css');
+		$inject->css('css/enhanced-text-fields.css');
 		if ($has_markdown) {
 			$inject->css('css/github-markdown-light.css');
 			$inject->css('css/highlight-theme.css');
@@ -137,26 +137,26 @@ class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
 			$inject->js('js/sir-hljs-languages.js');
 		}
 		$inject->js('js/ConsoleDebugLogger.js');
-		$inject->js('js/rc-viewers.js');
+		$inject->js('js/enhanced-text-fields.js');
 		?>
 		<script type="text/javascript">
-			DE_RUB_SEG_TextViewersEM.init(<?= $config_json ?>);
+			DE_RUB_SEG_EnhancedTextFieldsEM.init(<?= $config_json ?>);
 		</script>
 		<?php
 	}
 
 
 	/**
-	 * Removes readonly action tags from viewer fields to allow client-side viewers to control readonly state.
+	 * Removes readonly action tags from enhanced fields to allow client-side controls to manage readonly state.
 	 * @param \Project $Proj 
-	 * @param array $viewer_fields 
+	 * @param array $enhanced_fields 
 	 * @return void 
 	 */
-	private function removeREDCapReadonly($Proj, $viewer_fields) {
-		// Remove readonly action tags from viewer fields
+	private function removeREDCapReadonly($Proj, $enhanced_fields) {
+		// Remove readonly action tags from enhanced fields
 		$metadata_name = \Design::isDraftPreview($Proj->project_id) ? 'metadata_temp' : 'metadata';
 		$metadata = &$Proj->$metadata_name;
-		foreach ($viewer_fields as $vf) {
+		foreach ($enhanced_fields as $vf) {
 			if ($vf['readonly']) {
 				$fieldName = $vf['name'];
 				foreach (['@READONLY', '@READONLY-FORM', '@READONLY-SURVEY'] as $readonlyTag) {
@@ -168,7 +168,7 @@ class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
 	}
 
 	/**
-	 * Builds viewer definitions from the configured action tags.
+	 * Builds enhancement definitions from the configured action tags.
 	 *
 	 * @param \Project    $Proj            REDCap project.
 	 * @param string|null $record          Current record id.
@@ -178,7 +178,7 @@ class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
 	 * @param bool        $is_survey       Whether the current page is a survey page.
 	 * @return array
 	 */
-	private function getViewerFields($Proj, $record, $instrument, $event_id, $repeat_instance, $is_survey)
+	private function getEnhancedFields($Proj, $record, $instrument, $event_id, $repeat_instance, $is_survey)
 	{
 		$context = [
 			'project_id' => $Proj->project_id,
@@ -188,8 +188,8 @@ class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
 			'instance' => $repeat_instance ?: 1,
 		];
 		$tags = [
-			self::AT_JSON_VIEWER, 
-			self::AT_MARKDOWN_VIEWER,
+			self::AT_ENHANCED_TEXT_JSON,
+			self::AT_ENHANCED_TEXT_MARKDOWN,
 			'@READONLY',
 			'@READONLY-FORM',
 			'@READONLY-SURVEY',
@@ -205,7 +205,7 @@ class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
 			return false;
 		};
 
-		foreach ($actionTags[self::AT_MARKDOWN_VIEWER] ?? [] as $fieldName => $tagInfo) {
+		foreach ($actionTags[self::AT_ENHANCED_TEXT_MARKDOWN] ?? [] as $fieldName => $tagInfo) {
 			$fieldMetadata = $metadata[$fieldName] ?? null;
 			if (empty($fieldMetadata) || ($fieldMetadata['element_type'] ?? '') !== 'textarea') continue;
 			$viewerFields[$fieldName] = [
@@ -216,7 +216,7 @@ class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
 				'markdown' => $this->parseMarkdownViewerParams($tagInfo['params'] ?? ''),
 			];
 		}
-		foreach ($actionTags[self::AT_JSON_VIEWER] ?? [] as $fieldName => $tagInfo) {
+		foreach ($actionTags[self::AT_ENHANCED_TEXT_JSON] ?? [] as $fieldName => $tagInfo) {
 			$fieldMetadata = $metadata[$fieldName] ?? null;
 			if (empty($fieldMetadata) || !in_array($fieldMetadata['element_type'] ?? '', ['text', 'textarea'], true)) continue;
 			$jsonParams = $this->parseJsonViewerParams($tagInfo['params'] ?? '');
@@ -401,16 +401,16 @@ class TextViewersExternalModule extends \ExternalModules\AbstractExternalModule
 	}
 
 	/**
-	 * Checks whether any field has a specific viewer type.
+	 * Checks whether any field has a specific enhancement type.
 	 *
-	 * @param array  $viewer_fields Viewer field definitions.
-	 * @param string $viewer_type   Viewer type to search for.
+	 * @param array  $enhanced_fields Enhancement field definitions.
+	 * @param string $enhancement_type Enhancement type to search for.
 	 * @return bool
 	 */
-	private function hasViewerType($viewer_fields, $viewer_type)
+	private function hasEnhancementType($enhanced_fields, $enhancement_type)
 	{
-		foreach ($viewer_fields as $field) {
-			if (in_array($viewer_type, $field['viewers'], true)) {
+		foreach ($enhanced_fields as $field) {
+			if (in_array($enhancement_type, $field['viewers'], true)) {
 				return true;
 			}
 		}

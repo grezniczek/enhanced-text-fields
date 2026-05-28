@@ -49,3 +49,10 @@ editing and preview should not be available.
 File upload fields may later support an `@ENHANCED-TEXT-AUTO` action tag that
 selects an enhancement mode from the uploaded file extension or detected text
 type. This is intentionally not implemented yet.
+
+
+
+
+## TODO
+
+- Before release, rename the module folder/prefix to `enhanced_text_fields`!

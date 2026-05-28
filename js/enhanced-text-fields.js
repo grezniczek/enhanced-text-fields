@@ -1,8 +1,8 @@
-/* js/rc-viewers.js */
+/* js/enhanced-text-fields.js */
 (function (global, $) {
 	'use strict';
 
-	const NS = 'DE_RUB_SEG_TextViewersEM';
+	const NS = 'DE_RUB_SEG_EnhancedTextFieldsEM';
 	const EM_NAME = 'Enhanced Text Fields';
 	const VIEW_RAW = 'raw';
 	const VIEW_MARKDOWN = 'markdown';

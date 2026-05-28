@@ -1,6 +1,6 @@
 {
 	"name": "Enhanced Text Fields",
-	"namespace": "DE\\RUB\\SEG\\TextViewersExternalModule",
+	"namespace": "DE\\RUB\\SEG\\EnhancedTextFieldsExternalModule",
 	"description": "Enhances REDCap text fields with JSON and Markdown editing, validation, formatting, and preview tools.",
 	"documentation": "README.md",
 	"authors": [

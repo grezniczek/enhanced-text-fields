@@ -1,6 +1,6 @@
 <?php 
 
-namespace DE\RUB\SEG\TextViewersExternalModule;
+namespace DE\RUB\SEG\EnhancedTextFieldsExternalModule;
 
 class InjectionHelper {
 
