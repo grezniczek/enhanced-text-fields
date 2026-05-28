@@ -831,9 +831,33 @@
 		if (controller.layout === LAYOUT_FULLSCREEN) {
 			controller.fullscreenHeight = height;
 		}
-		if (controller.editor) {
-			controller.editor.resize();
+		resizeTextViewerEditor(controller);
+	}
+
+	/**
+	 * Refreshes an Ace editor after its container size or position changes.
+	 *
+	 * @param {object} controller Text viewer controller.
+	 * @returns {void}
+	 */
+	function resizeTextViewerEditor(controller) {
+		if (!controller.editor) {
+			return;
 		}
+
+		controller.editor.resize(true);
+		if (global.requestAnimationFrame) {
+			global.requestAnimationFrame(function () {
+				controller.editor.resize(true);
+				global.requestAnimationFrame(function () {
+					controller.editor.resize(true);
+				});
+			});
+			return;
+		}
+		global.setTimeout(function () {
+			controller.editor.resize(true);
+		}, 0);
 	}
 
 	/**
@@ -889,9 +913,7 @@
 			width: cssWidth,
 			'margin-left': '',
 		});
-		if (controller.editor) {
-			controller.editor.resize();
-		}
+		resizeTextViewerEditor(controller);
 	}
 
 	/**
@@ -935,6 +957,7 @@
 		controller.layout = LAYOUT_EXPANDED;
 		controller.$toolbar.addClass('rc-text-viewer-md-toolbar--expanded');
 		$panel.addClass('rc-text-viewer-md-preview--expanded');
+		resizeTextViewerEditor(controller);
 		controller.updateToolbar();
 	}
 
@@ -975,9 +998,7 @@
 		controller.$toolbar.addClass('rc-text-viewer-md-toolbar--fullscreen');
 		$panel.removeClass('rc-text-viewer-md-preview--expanded');
 		$panel.addClass('rc-text-viewer-md-preview--fullscreen');
-		if (controller.editor) {
-			controller.editor.resize();
-		}
+		resizeTextViewerEditor(controller);
 		controller.updateToolbar();
 	}
 
@@ -996,6 +1017,7 @@
 		restoreTextViewerLayout(controller);
 		controller.syncSize(false);
 		controller.restoreVisibleMode();
+		resizeTextViewerEditor(controller);
 		controller.updateToolbar();
 	}
 
