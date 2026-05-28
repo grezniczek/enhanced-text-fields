@@ -308,7 +308,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 		$metadata_name = \Design::isDraftPreview($Proj->project_id) ? 'metadata_temp' : 'metadata';
 		$metadata = &$Proj->$metadata_name;
 		foreach ($enhanced_fields as $vf) {
-			if ($vf['readonly']) {
+			if ($vf['readonly'] && !$vf['isFile']) {
 				$fieldName = $vf['name'];
 				foreach (['@READONLY', '@READONLY-FORM', '@READONLY-SURVEY'] as $readonlyTag) {
 					$misc = $metadata[$fieldName]['misc'] ?? '';
