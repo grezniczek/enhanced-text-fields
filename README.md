@@ -21,50 +21,35 @@ Examples:
 - `@ENHANCED-TEXT-XML="xml-only, indent:tab, scope:all"`
 - `@ENHANCED-TEXT-YAML="initial:yaml"`
 
+Note: Only one action tag is allowed per field. When multiple are set, field type and module-internal ordering will determine which one gets applied.
+
 ## Parameters
 
-Action-tag parameters are optional. When provided, use a double-quoted,
-comma-separated list such as `@ENHANCED-TEXT-JSON="initial:json, height:240"`. 
+Action-tag parameters are optional. When provided, use a double-quoted, comma-separated list such as `@ENHANCED-TEXT-JSON="initial:json, height:240"`. 
+
 Note: No quotes or single quotes are not allowed.
 
 - `initial:*` sets the first visible mode. Use `initial:raw` for the REDCap raw field. Use `initial:markdown`, `initial:json`, `initial:css`, `initial:xml`, `initial:ini`, `initial:r`, `initial:yaml`, or `initial:text` for the corresponding editor. Markdown also supports `initial:html` for its rendered HTML view.
 - `height:200` sets the initial editor or preview height in pixels.
-- `format:pretty` stores normalized JSON, CSS, or XML with line breaks and
-  indentation when the underlying field supports newlines.
-- `format:compact` stores normalized JSON, CSS, or XML without layout
-  whitespace.
-- `indent:2`, `indent:4`, or `indent:tab` controls pretty indentation for JSON,
-  CSS, and XML. The default is two spaces.
-- `scope:form`, `scope:survey`, or `scope:all` controls where the enhanced
-  control is injected. `scope:form` is the default, so action tags do not affect
-  surveys unless `scope:survey` or `scope:all` is specified.
-- `json-only`, `markdown-only`, `css-only`, `xml-only`, `text-only`, `ini-only`,
-  `r-only`, or `yaml-only` opens the enhanced mode and hides the Raw tab.
-  `editor-only` is accepted as a generic alias for the respective editor
-  modes.
+- `format:pretty` stores normalized JSON, CSS, or XML with line breaks and indentation when the underlying field supports newlines.
+- `format:compact` stores normalized JSON, CSS, or XML without layout   whitespace.
+- `indent:2`, `indent:4`, or `indent:tab` controls pretty indentation for JSON, CSS, and XML. The default is two spaces.
+- `scope:form`, `scope:survey`, or `scope:all` controls where the enhanced control is injected. `scope:form` is the default, so action tags do not affect surveys unless `scope:survey` or `scope:all` is specified.
+- `json-only`, `markdown-only`, `css-only`, `xml-only`, `text-only`, `ini-only`, `r-only`, or `yaml-only` opens the enhanced mode and hides the Raw tab. `editor-only` is accepted as a generic alias for the respective editor modes.
 
 ## Normalization
 
-JSON, CSS, and XML editors normalize content when the enhanced editor syncs back
-to the REDCap field. REDCap text fields cannot store newlines, so these modes
-always store compact one-line values in text fields even when `format:pretty` is
-configured.
+JSON, CSS, and XML editors normalize content when the enhanced editor syncs back to the REDCap field. REDCap text fields cannot store newlines, so these modes always store compact one-line values in text fields even when `format:pretty` is configured.
 
-The JSON editor always normalizes valid JSON layout in the editor itself. The
-stored value uses the configured `format` for Notes fields and compact storage
-for text fields.
+The JSON editor always normalizes valid JSON layout in the editor itself. The stored value uses the configured `format` for Notes fields and compact storage for text fields.
 
-YAML is currently edited as YAML but is not normalized by this module. YAML
-indentation is therefore left exactly as entered.
+YAML is currently edited as YAML but is not normalized by this module. YAML indentation is therefore left exactly as entered.
 
-There is intentionally no `raw-only` option; omit the action tag when enhanced
-editing or preview should not be available.
+There is intentionally no `raw-only` option; omit the action tag when enhanced editing or preview should not be available.
 
 ## Future File Fields
 
-File upload fields may later support an `@ENHANCED-TEXT-AUTO` action tag that
-selects an enhancement mode from the uploaded file extension or detected text
-type. This is intentionally not implemented yet.
+File upload fields may later support an `@ENHANCED-TEXT-AUTO` action tag that selects an enhancement mode from the uploaded file extension or detected text type. This is intentionally not implemented yet.
 
 ## TODO
 

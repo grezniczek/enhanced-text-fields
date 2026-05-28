@@ -2637,15 +2637,27 @@
 				return;
 			}
 
-			(field.viewers || []).forEach(function (viewerType) {
-				const key = `${NS}-${viewerType}`;
-				if ($control.data(key)) {
-					return;
-				}
-				$control.data(key, true);
-				attachEnhancedTextViewer($control, field, viewerType);
-			});
+			const mode = determineMode(field.viewers || [], $control);
+			const key = `${NS}-isInitialized`;
+			if (mode === '' || $control.data(key)) {
+				return;
+			}
+			$control.data(key, true);
+			attachEnhancedTextViewer($control, field, mode);
 		});
+	}
+
+	/**
+	 * Determines which viewer type to use for the given field.
+	 * TODO: Later, we may want to allow multiple viewer types and take a best guess depending on field type and content. If the content is empty or when when no clear distinction can be made, the fallback is to use the plain text viewer. For now, we attach to the first viewer type that is configured for the field.
+	 * @param {string[]} viewers
+	 * @param {jQuery<HTMLElement>} $control
+	 * @returns 
+	 */
+	function determineMode(viewers, $control) {
+		viewers = viewers || [];
+		if (viewers.length === 0) return '';
+		return viewers[0];
 	}
 
 	/**
