@@ -140,10 +140,6 @@
 	padding: 4px 6px;
 }
 
-tr[sq_id]:has(td.data) .rc-text-viewer-md-toolbar {
-	max-width: 90%;
-}
-
 .rc-text-viewer-md-toolbar--expanded {
 	border-bottom: 1px solid #d4d8dd;
 	border-radius: 4px;
@@ -269,6 +265,12 @@ tr[sq_id]:has(td.data) .rc-text-viewer-md-toolbar {
 	padding: 0;
 	position: relative;
 	resize: none;
+}
+
+.rc-text-viewer-controlled-field {
+	box-sizing: border-box;
+	max-width: 100% !important;
+	width: 100% !important;
 }
 
 .rc-text-viewer-raw-panel textarea {
