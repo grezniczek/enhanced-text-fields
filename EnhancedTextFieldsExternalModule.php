@@ -14,60 +14,14 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 	 */
 	private $js_debug = false;
 
-	/**
-	 * REDCap action tag that enables JSON text enhancements.
-	 *
-	 * @var string
-	 */
-	const AT_ENHANCED_TEXT_JSON = "@ENHANCED-TEXT-JSON";
-
-	/**
-	 * REDCap action tag that enables Markdown text enhancements.
-	 *
-	 * @var string
-	 */
-	const AT_ENHANCED_TEXT_MARKDOWN = "@ENHANCED-TEXT-MARKDOWN";
-
-	/**
-	 * REDCap action tag that enables plain text enhancements.
-	 *
-	 * @var string
-	 */
+	// Action tags
 	const AT_ENHANCED_TEXT_PLAIN = "@ENHANCED-TEXT-PLAIN";
-
-	/**
-	 * REDCap action tag that enables CSS text enhancements.
-	 *
-	 * @var string
-	 */
+	const AT_ENHANCED_TEXT_JSON = "@ENHANCED-TEXT-JSON";
+	const AT_ENHANCED_TEXT_MARKDOWN = "@ENHANCED-TEXT-MARKDOWN";
 	const AT_ENHANCED_TEXT_CSS = "@ENHANCED-TEXT-CSS";
-
-	/**
-	 * REDCap action tag that enables INI text enhancements.
-	 *
-	 * @var string
-	 */
 	const AT_ENHANCED_TEXT_INI = "@ENHANCED-TEXT-INI";
-
-	/**
-	 * REDCap action tag that enables R text enhancements.
-	 *
-	 * @var string
-	 */
 	const AT_ENHANCED_TEXT_R = "@ENHANCED-TEXT-R";
-
-	/**
-	 * REDCap action tag that enables XML text enhancements.
-	 *
-	 * @var string
-	 */
 	const AT_ENHANCED_TEXT_XML = "@ENHANCED-TEXT-XML";
-
-	/**
-	 * REDCap action tag that enables YAML text enhancements.
-	 *
-	 * @var string
-	 */
 	const AT_ENHANCED_TEXT_YAML = "@ENHANCED-TEXT-YAML";
 
 	#region Hooks

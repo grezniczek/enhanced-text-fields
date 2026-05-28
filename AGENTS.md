@@ -8,7 +8,7 @@
   ```
   Instead, assign results to variables first, then pass the variables. This helps debugging a ton, and can still be optimized once code is stable.
 
-- Always add PHPDoc blocks to all functions and variables
+- Always add PHPDoc blocks to all functions and variables (except for const declarations - only add if necessary, e.g., when the constant name is not self-explanatory).
 - For complex operations or operations that are not immediately evident, add concise comments, but do not litter with comments.
 - When outputting HTML, prefer
   ```php
