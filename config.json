@@ -4,7 +4,11 @@
 	"description": "Enhances REDCap text fields with JSON and Markdown editing, validation, formatting, and preview tools.",
 	"documentation": "README.md",
 	"auth-ajax-actions": [
-		"save-theme-preference"
+		"save-theme-preference",
+		"get-file-content"
+	],
+	"no-auth-ajax-actions": [
+		"get-file-content"
 	],
 	"authors": [
 		{

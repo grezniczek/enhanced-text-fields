@@ -212,6 +212,17 @@
 	margin-left: 8px;
 }
 
+.rc-text-viewer-file-view-separator {
+	color: #555;
+	font-size: 10px;
+	padding: 0 10px;
+}
+
+.rc-text-viewer-file-view-link {
+	font-size: 10px;
+	text-decoration: underline;
+}
+
 .rc-text-viewer__icon-button {
 	align-items: center;
 	background: transparent;
@@ -354,6 +365,20 @@
 }
 
 .rc-text-viewer-md-preview--fullscreen .rc-text-viewer-md-resize-handle {
+	display: none;
+}
+
+.rc-text-viewer-file-panel--fullscreen {
+	background: #fff;
+}
+
+.rc-text-viewer-file-panel--fullscreen .rc-text-viewer-file-ace {
+	flex: 1 1 auto;
+	height: auto;
+	min-height: 0;
+}
+
+.rc-text-viewer-file-panel--fullscreen .rc-text-viewer-file-preview {
 	display: none;
 }
 

@@ -26,6 +26,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 
 	// Theme setting persistence
 	const AJAX_SAVE_THEME_PREFERENCE = 'save-theme-preference';
+	const AJAX_GET_FILE_CONTENT = 'get-file-content';
 	const THEME_SETTING_PREFIX = 'theme-preference:';
 
 	#region Hooks
@@ -95,6 +96,8 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 		switch ($action) {
 			case self::AJAX_SAVE_THEME_PREFERENCE:
 				return $this->saveThemePreference($payload, $user_id);
+			case self::AJAX_GET_FILE_CONTENT:
+				return $this->getFileContent($payload, $project_id, $user_id);
 		}
 	}
 
@@ -293,6 +296,21 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 	private function getThemePreferenceTypes()
 	{
 		return array('text', 'json', 'markdown', 'css', 'ini', 'r', 'xml', 'yaml');
+	}
+
+	/**
+	 * Returns file contents for the client-side file viewer.
+	 *
+	 * This is intentionally stubbed while the client-side viewer behavior is being built.
+	 *
+	 * @param mixed $payload Client payload.
+	 * @param int|string $project_id
+	 * @param string|null $user_id
+	 * @return string
+	 */
+	private function getFileContent($payload, $project_id, $user_id)
+	{
+		return '"TEST"';
 	}
 
 

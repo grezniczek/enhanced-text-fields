@@ -32,6 +32,23 @@
 	const LAYOUT_ATTRIBUTE = 'data-rc-text-viewer-layout';
 	const TOOLBAR_CLASS = 'rc-text-viewer-md-toolbar d-print-none';
 	const VIEWER_CLASS = 'rc-text-viewer-panel';
+	const FILE_VIEW_LINK_CLASS = 'rc-text-viewer-file-view-link';
+	const AJAX_GET_FILE_CONTENT = 'get-file-content';
+	const FILE_EXTENSION_MODES = {
+		conf: 'ini',
+		css: 'css',
+		ini: 'ini',
+		json: 'json',
+		log: 'text',
+		markdown: 'markdown',
+		md: 'markdown',
+		r: 'r',
+		text: 'text',
+		txt: 'text',
+		xml: 'xml',
+		yaml: 'yaml',
+		yml: 'yaml',
+	};
 
 	if (global[NS]) {
 		return;
@@ -114,6 +131,24 @@
 		}
 
 		return $('#' + escapeSelector(fieldName)).filter('textarea,input[type="text"],input:not([type])').first();
+	}
+
+	/**
+	 * Finds the REDCap file upload container for a field.
+	 *
+	 * @param {string} fieldName REDCap field name.
+	 * @returns {jQuery}
+	 */
+	function findFileContainer(fieldName) {
+		const idMatch = document.getElementById('fileupload-container-' + fieldName);
+		if (idMatch) {
+			return $(idMatch);
+		}
+		return $('.fileupload-container').filter(function () {
+			return $(this).find('a.filedownloadlink').filter(function () {
+				return this.name === fieldName;
+			}).length > 0;
+		}).first();
 	}
 
 	/**
@@ -1031,6 +1066,669 @@
 	}
 
 	/**
+	 * Attaches the read-only file viewer behavior for a REDCap file field.
+	 *
+	 * @param {object} field Field configuration.
+	 * @returns {void}
+	 */
+	function attachEnhancedFileViewer(field) {
+		const $container = findFileContainer(field.name);
+		if (!$container.length) {
+			LOGGER.warn('File upload container not found', field.name);
+			return;
+		}
+
+		const key = `${NS}-isFileInitialized`;
+		if ($container.data(key)) {
+			refreshFileViewerState(state.controllers[field.name]);
+			return;
+		}
+
+		$container.data(key, true);
+		const controller = createFileViewerController(field, $container);
+		state.controllers[field.name] = controller;
+		initFileViewerObserver(controller);
+		refreshFileViewerState(controller);
+		LOGGER.log('File viewer controller created', controller);
+	}
+
+	/**
+	 * Creates the fullscreen-only file viewer controller.
+	 *
+	 * @param {object} field Field configuration.
+	 * @param {jQuery} $container REDCap file upload container.
+	 * @returns {object}
+	 */
+	function createFileViewerController(field, $container) {
+		const fieldName = field.name;
+		const toolbarParts = createFileToolbarParts(fieldName);
+		const $viewer = $('<div/>', {
+			class: VIEWER_CLASS + ' rc-text-viewer-file-panel',
+			'data-rc-text-viewer-field': fieldName,
+		});
+		const $editor = $('<div/>', {
+			id: 'rc-text-viewer-file-ace-' + fieldName,
+			class: 'rc-text-viewer__ace rc-text-viewer-file-ace',
+		});
+		const $previewScroll = $('<div/>', { class: 'rc-text-viewer-md-preview-scroll rc-text-viewer-file-preview' });
+		const $previewContent = $('<div/>', { class: 'markdown-body rc-text-viewer-md-preview-content' });
+		const $status = $('<span/>', { class: 'rc-text-viewer-status', 'aria-live': 'polite' });
+		$previewScroll.append($previewContent);
+		$viewer.append($editor, $previewScroll);
+
+		const controller = {
+			fieldName: fieldName,
+			field: field,
+			$container: $container,
+			$downloadLink: $(),
+			$linkArea: $(),
+			$viewLink: $(),
+			$viewSeparator: $(),
+			$toolbar: toolbarParts.$toolbar,
+			$tabs: toolbarParts.$tabs,
+			$actions: toolbarParts.$actions,
+			$themeButton: toolbarParts.$themeButton,
+			$closeButton: toolbarParts.$closeButton,
+			$viewer: $viewer,
+			$editor: $editor,
+			$previewScroll: $previewScroll,
+			$previewContent: $previewContent,
+			$status: $status,
+			editor: null,
+			mode: null,
+			currentFileMode: null,
+			themeMode: null,
+			currentTheme: THEME_LIGHT,
+			fileInfo: null,
+			fileContent: '',
+			bodyOverflow: null,
+			layout: LAYOUT_FULLSCREEN,
+			isOpen: false,
+			observer: null,
+			isThemeableMode: function () { return controller.mode === controller.currentFileMode; },
+		};
+
+		bindFileViewerToolbar(controller);
+		return controller;
+	}
+
+	/**
+	 * Builds toolbar elements for the fullscreen file viewer.
+	 *
+	 * @param {string} fieldName REDCap field name.
+	 * @returns {object}
+	 */
+	function createFileToolbarParts(fieldName) {
+		const $toolbar = $('<div/>', {
+			class: TOOLBAR_CLASS + ' rc-text-viewer-file-toolbar',
+			'data-rc-text-viewer-field': fieldName,
+		});
+		const $tabs = $('<span/>', { class: 'rc-text-viewer-md-tabs' });
+		const $actions = $('<span/>', { class: 'rc-text-viewer-md-actions' });
+		const $themeButton = createIconButton('toggle-theme', 'fa-solid fa-moon', 'Switch to dark mode');
+		const $closeButton = createIconButton('file-close', 'fa-solid fa-xmark', 'Close');
+		$actions.append($themeButton, $closeButton);
+		$toolbar.append($tabs, $actions);
+		return {
+			$toolbar: $toolbar,
+			$tabs: $tabs,
+			$actions: $actions,
+			$themeButton: $themeButton,
+			$closeButton: $closeButton,
+		};
+	}
+
+	/**
+	 * Wires the file viewer toolbar.
+	 *
+	 * @param {object} controller File viewer controller.
+	 * @returns {void}
+	 */
+	function bindFileViewerToolbar(controller) {
+		controller.$toolbar.on('click', MODE_SELECTOR, function (ev) {
+			ev.preventDefault();
+			setFileViewerMode(controller, $(this).attr(MODE_ATTRIBUTE));
+		});
+		controller.$toolbar.on('click', '[data-rc-text-viewer-action]', function (ev) {
+			ev.preventDefault();
+			const action = $(this).attr('data-rc-text-viewer-action');
+			if (action === 'toggle-theme') {
+				toggleControllerTheme(controller);
+			}
+			if (action === 'file-close') {
+				closeFileViewer(controller);
+			}
+		});
+	}
+
+	/**
+	 * Watches REDCap's AJAX-updated file field markup.
+	 *
+	 * @param {object} controller File viewer controller.
+	 * @returns {void}
+	 */
+	function initFileViewerObserver(controller) {
+		if (!global.MutationObserver || !controller.$container.length) {
+			return;
+		}
+		const refresh = debounce(function () {
+			refreshFileViewerState(controller);
+		}, 50);
+		controller.observer = new MutationObserver(refresh);
+		controller.observer.observe(controller.$container[0], {
+			attributes: true,
+			attributeFilter: ['class', 'href', 'style', 'title', 'vf'],
+			characterData: true,
+			childList: true,
+			subtree: true,
+		});
+	}
+
+	/**
+	 * Adds, updates, or removes the file View link for the current REDCap markup.
+	 *
+	 * @param {object} controller File viewer controller.
+	 * @returns {void}
+	 */
+	function refreshFileViewerState(controller) {
+		if (!controller) {
+			return;
+		}
+		const info = getCurrentFileInfo(controller);
+		if (!info || !info.mode) {
+			removeFileViewLink(controller);
+			if (controller.isOpen) {
+				closeFileViewer(controller);
+			}
+			return;
+		}
+
+		ensureFileViewLink(controller);
+		controller.$viewLink
+			.attr('title', 'View ' + getModeLabel(info.mode) + ' file')
+			.attr('aria-label', 'View ' + info.filename)
+			.data('rcTextViewerFileInfo', info);
+		if (controller.isOpen && !isSameFileInfo(controller.fileInfo, info)) {
+			closeFileViewer(controller);
+		}
+	}
+
+	/**
+	 * Ensures the file View link exists in REDCap's file action area.
+	 *
+	 * @param {object} controller File viewer controller.
+	 * @returns {void}
+	 */
+	function ensureFileViewLink(controller) {
+		if (controller.$viewLink && controller.$viewLink.length && $.contains(document, controller.$viewLink[0])) {
+			return;
+		}
+
+		controller.$linkArea = $('#' + escapeSelector(controller.fieldName) + '-linknew');
+		if (!controller.$linkArea.length) {
+			controller.$linkArea = controller.$container;
+		}
+
+		controller.$viewLink = $('<a/>', {
+			href: 'javascript:;',
+			class: FILE_VIEW_LINK_CLASS + ' d-print-none',
+			text: 'View',
+		});
+		controller.$viewLink.on('click', function (ev) {
+			ev.preventDefault();
+			openFileViewer(controller);
+		});
+		if ($.trim(controller.$linkArea.text()) !== '') {
+			controller.$viewSeparator = $('<span/>', {
+				class: 'rc-text-viewer-file-view-separator d-print-none',
+				text: 'or',
+			});
+			controller.$linkArea.append(controller.$viewSeparator);
+		}
+		controller.$linkArea.append(controller.$viewLink);
+	}
+
+	/**
+	 * Removes the injected View link.
+	 *
+	 * @param {object} controller File viewer controller.
+	 * @returns {void}
+	 */
+	function removeFileViewLink(controller) {
+		if (controller.$viewLink && controller.$viewLink.length) {
+			controller.$viewLink.remove();
+		}
+		if (controller.$viewSeparator && controller.$viewSeparator.length) {
+			controller.$viewSeparator.remove();
+		}
+		controller.$viewLink = $();
+		controller.$viewSeparator = $();
+	}
+
+	/**
+	 * Reads the current uploaded file state from REDCap's file field markup.
+	 *
+	 * @param {object} controller File viewer controller.
+	 * @returns {object|null}
+	 */
+	function getCurrentFileInfo(controller) {
+		const $link = controller.$container.find('a.filedownloadlink').filter(function () {
+			return this.name === controller.fieldName;
+		}).first();
+		if (!$link.length || $link.css('display') === 'none') {
+			return null;
+		}
+
+		const href = $link.attr('href') || '';
+		const $filename = $link.find('.fu-fn').first();
+		const filename = String($filename.attr('vf') || $link.attr('title') || $filename.text() || '').trim();
+		if (!href || !filename) {
+			return null;
+		}
+
+		const mode = determineFileMode(controller.field.viewers || [], filename);
+		const params = parseFileDownloadParams(href);
+		if (!params.fileId || !params.docIdHash) {
+			return null;
+		}
+
+		return {
+			docIdHash: params.docIdHash,
+			fileId: params.fileId,
+			filename: filename,
+			href: href,
+			mode: mode,
+		};
+	}
+
+	/**
+	 * Parses the REDCap file download URL parameters required by the server.
+	 *
+	 * @param {string} href File download URL.
+	 * @returns {object}
+	 */
+	function parseFileDownloadParams(href) {
+		try {
+			const url = new URL(href, global.location.href);
+			return {
+				docIdHash: url.searchParams.get('doc_id_hash') || '',
+				fileId: url.searchParams.get('id') || '',
+			};
+		}
+		catch (e) {
+			return {
+				docIdHash: getQueryParamFromString(href, 'doc_id_hash'),
+				fileId: getQueryParamFromString(href, 'id'),
+			};
+		}
+	}
+
+	/**
+	 * Gets one URL query parameter from a string.
+	 *
+	 * @param {string} value URL-ish string.
+	 * @param {string} key Query parameter name.
+	 * @returns {string}
+	 */
+	function getQueryParamFromString(value, key) {
+		const match = String(value || '').match(new RegExp('[?&]' + key + '=([^&]*)'));
+		return match ? decodeURIComponent(match[1].replace(/\+/g, ' ')) : '';
+	}
+
+	/**
+	 * Selects a configured viewer based on uploaded file extension.
+	 *
+	 * @param {string[]} viewers Configured enhancement modes.
+	 * @param {string} filename Uploaded filename.
+	 * @returns {string}
+	 */
+	function determineFileMode(viewers, filename) {
+		const extension = getFileExtension(filename);
+		const mode = FILE_EXTENSION_MODES[extension] || '';
+		if (!isSupportedEnhancementMode(mode)) {
+			return '';
+		}
+		return (viewers || []).indexOf(mode) !== -1 ? mode : '';
+	}
+
+	/**
+	 * Returns the lowercase extension for a filename.
+	 *
+	 * @param {string} filename Uploaded filename.
+	 * @returns {string}
+	 */
+	function getFileExtension(filename) {
+		const clean = String(filename || '').split(/[?#]/)[0];
+		const basename = clean.split(/[\\/]/).pop() || '';
+		const dot = basename.lastIndexOf('.');
+		return dot > -1 ? basename.substring(dot + 1).toLowerCase() : '';
+	}
+
+	/**
+	 * Compares two file info objects for the same uploaded document.
+	 *
+	 * @param {object|null} a First file info.
+	 * @param {object|null} b Second file info.
+	 * @returns {boolean}
+	 */
+	function isSameFileInfo(a, b) {
+		return !!a && !!b && a.fileId === b.fileId && a.docIdHash === b.docIdHash && a.mode === b.mode;
+	}
+
+	/**
+	 * Opens the fullscreen file viewer.
+	 *
+	 * @param {object} controller File viewer controller.
+	 * @returns {void}
+	 */
+	function openFileViewer(controller) {
+		const info = getCurrentFileInfo(controller);
+		if (!info || !info.mode) {
+			refreshFileViewerState(controller);
+			return;
+		}
+
+		controller.fileInfo = info;
+		controller.currentFileMode = info.mode;
+		controller.themeMode = info.mode;
+		controller.currentTheme = getThemePreference(info.mode);
+		controller.fileContent = '';
+		controller.mode = getInitialFileViewerMode(controller, info.mode);
+		configureFileViewerTabs(controller, info.mode);
+		showFileViewerChrome(controller);
+		setFileViewerLoading(controller);
+		updateFileViewerToolbar(controller);
+
+		ensureFileViewerEditor(controller, info.mode).then(function () {
+			setFileViewerLoading(controller);
+			return fetchFileViewerContent(controller, info);
+		}).then(function (content) {
+			if (!isSameFileInfo(controller.fileInfo, info)) {
+				return;
+			}
+			controller.fileContent = content;
+			renderFileViewerContent(controller);
+			setFileViewerMode(controller, controller.mode);
+		}).catch(function (e) {
+			setFileViewerError(controller, e);
+		});
+	}
+
+	/**
+	 * Returns the initial file viewer tab.
+	 *
+	 * @param {object} controller File viewer controller.
+	 * @param {string} mode Matched file mode.
+	 * @returns {string}
+	 */
+	function getInitialFileViewerMode(controller, mode) {
+		if (mode !== VIEW_MARKDOWN) {
+			return mode;
+		}
+		const modeConfig = controller.field.markdown || {};
+		return modeConfig.initialMode === VIEW_MARKDOWN ? VIEW_MARKDOWN : VIEW_HTML;
+	}
+
+	/**
+	 * Configures the file viewer tabs for a matched mode.
+	 *
+	 * @param {object} controller File viewer controller.
+	 * @param {string} mode Matched file mode.
+	 * @returns {void}
+	 */
+	function configureFileViewerTabs(controller, mode) {
+		const tabs = mode === VIEW_MARKDOWN ? [VIEW_MARKDOWN, VIEW_HTML] : [mode];
+		const tabItems = tabs.map(function (tabMode) {
+			return createModeTab(tabMode, getModeLabel(tabMode));
+		});
+		controller.$tabs.empty();
+		controller.$tabs.append(createEditStateIndicator(true));
+		if (tabItems.length === 1) {
+			controller.$tabs.append(tabItems[0]);
+		}
+		else {
+			appendSeparatedTabs(controller.$tabs, tabItems);
+		}
+		if (mode !== VIEW_MARKDOWN) {
+			controller.$tabs.append(controller.$status);
+		}
+	}
+
+	/**
+	 * Shows the fullscreen file viewer toolbar and panel.
+	 *
+	 * @param {object} controller File viewer controller.
+	 * @returns {void}
+	 */
+	function showFileViewerChrome(controller) {
+		if (controller.isOpen) {
+			return;
+		}
+		controller.bodyOverflow = $('body').css('overflow');
+		$('body').css('overflow', 'hidden');
+		$('body').append(controller.$toolbar, controller.$viewer);
+		controller.$toolbar.addClass('rc-text-viewer-md-toolbar--fullscreen rc-text-viewer-file-toolbar--fullscreen');
+		controller.$viewer.addClass('rc-text-viewer-md-preview--fullscreen rc-text-viewer-file-panel--fullscreen');
+		controller.$toolbar.css('display', 'flex');
+		controller.$viewer.css('display', 'flex');
+		controller.isOpen = true;
+	}
+
+	/**
+	 * Closes the fullscreen file viewer.
+	 *
+	 * @param {object} controller File viewer controller.
+	 * @returns {void}
+	 */
+	function closeFileViewer(controller) {
+		if (!controller || !controller.isOpen) {
+			return;
+		}
+		controller.$toolbar.detach();
+		controller.$viewer.detach();
+		if (controller.bodyOverflow !== null) {
+			$('body').css('overflow', controller.bodyOverflow);
+			controller.bodyOverflow = null;
+		}
+		controller.isOpen = false;
+	}
+
+	/**
+	 * Ensures an Ace editor exists and is configured for the current file mode.
+	 *
+	 * @param {object} controller File viewer controller.
+	 * @param {string} mode Matched file mode.
+	 * @returns {Promise}
+	 */
+	function ensureFileViewerEditor(controller, mode) {
+		return ensureAce().then(function () {
+			const modeConfig = getFileModeConfig(controller, mode);
+			if (!controller.editor) {
+				controller.editor = createAceEditor(controller.$editor.attr('id'), {
+					mode: mode,
+					theme: getPreferredAceTheme(mode),
+					readOnly: true,
+					useWorker: false,
+					indent: modeConfig.indent || 2,
+				});
+			}
+			else {
+				const aceMode = getAceModeConfig(mode);
+				if (aceMode.module) {
+					controller.editor.session.setMode(aceMode.module);
+				}
+				configureAceIndent(controller.editor, modeConfig.indent || 2);
+				controller.editor.setReadOnly(true);
+				controller.editor.setTheme(getAceThemeConfig(getPreferredAceTheme(mode)).module);
+			}
+			controller.editor.resize(true);
+		});
+	}
+
+	/**
+	 * Fetches file text through the module AJAX hook.
+	 *
+	 * @param {object} controller File viewer controller.
+	 * @param {object} info File info parsed from REDCap markup.
+	 * @returns {Promise<string>}
+	 */
+	function fetchFileViewerContent(controller, info) {
+		const jsmo = getJavascriptModuleObject();
+		if (!jsmo) {
+			return Promise.reject(new Error('The module AJAX object is unavailable.'));
+		}
+		return jsmo.ajax(AJAX_GET_FILE_CONTENT, {
+			docIdHash: info.docIdHash,
+			fieldName: controller.fieldName,
+			fileId: info.fileId,
+			filename: info.filename,
+			mode: info.mode,
+		}).then(function (response) {
+			if (typeof response === 'string') {
+				return response;
+			}
+			if (response && typeof response.content === 'string') {
+				return response.content;
+			}
+			return String(response || '');
+		});
+	}
+
+	/**
+	 * Renders fetched file text into Ace and Markdown preview panes.
+	 *
+	 * @param {object} controller File viewer controller.
+	 * @returns {void}
+	 */
+	function renderFileViewerContent(controller) {
+		if (!controller.editor) {
+			return;
+		}
+		const mode = controller.currentFileMode;
+		const modeConfig = getFileModeConfig(controller, mode);
+		const formatted = formatAceText(controller.fileContent, mode, 'pretty', modeConfig.indent || 2);
+		controller.editor.setValue(formatted.text, -1);
+		if (mode === VIEW_MARKDOWN) {
+			renderMarkdownContent(controller.fileContent, controller.$previewContent);
+		}
+		else {
+			setFileViewerStatus(controller, formatted);
+		}
+		controller.editor.resize(true);
+	}
+
+	/**
+	 * Sets the active file viewer tab.
+	 *
+	 * @param {object} controller File viewer controller.
+	 * @param {string} mode Desired tab mode.
+	 * @returns {void}
+	 */
+	function setFileViewerMode(controller, mode) {
+		if (controller.currentFileMode === VIEW_MARKDOWN) {
+			controller.mode = mode === VIEW_MARKDOWN ? VIEW_MARKDOWN : VIEW_HTML;
+		}
+		else {
+			controller.mode = controller.currentFileMode;
+		}
+
+		const showEditor = controller.mode === controller.currentFileMode;
+		controller.$editor.css('display', showEditor ? 'block' : 'none');
+		controller.$previewScroll.css('display', !showEditor && controller.currentFileMode === VIEW_MARKDOWN ? 'block' : 'none');
+		if (controller.editor && showEditor) {
+			controller.editor.resize(true);
+		}
+		updateFileViewerToolbar(controller);
+	}
+
+	/**
+	 * Updates file viewer toolbar state.
+	 *
+	 * @param {object} controller File viewer controller.
+	 * @returns {void}
+	 */
+	function updateFileViewerToolbar(controller) {
+		controller.$toolbar.find(MODE_SELECTOR).each(function () {
+			const $tab = $(this);
+			const active = $tab.attr(MODE_ATTRIBUTE) === controller.mode;
+			$tab.toggleClass('active', active);
+			$tab.attr('aria-current', active ? 'true' : 'false');
+		});
+		controller.$toolbar.attr(LAYOUT_ATTRIBUTE, LAYOUT_FULLSCREEN);
+		updateThemeButton(controller);
+		controller.$themeButton[isThemeToggleVisible(controller) ? 'show' : 'hide']();
+	}
+
+	/**
+	 * Returns mode config for a file viewer.
+	 *
+	 * @param {object} controller File viewer controller.
+	 * @param {string} mode Enhancement mode.
+	 * @returns {object}
+	 */
+	function getFileModeConfig(controller, mode) {
+		return controller.field[mode] || {};
+	}
+
+	/**
+	 * Shows loading text in the file viewer.
+	 *
+	 * @param {object} controller File viewer controller.
+	 * @returns {void}
+	 */
+	function setFileViewerLoading(controller) {
+		controller.$status.empty();
+		controller.$viewer.removeClass('rc-text-viewer--invalid');
+		controller.$previewContent.html($('<p/>').text('Loading...'));
+		if (controller.editor) {
+			controller.editor.setValue('Loading...', -1);
+		}
+	}
+
+	/**
+	 * Shows an error message in the file viewer.
+	 *
+	 * @param {object} controller File viewer controller.
+	 * @param {Error} error Error object.
+	 * @returns {void}
+	 */
+	function setFileViewerError(controller, error) {
+		const message = error && error.message ? error.message : String(error || 'Unable to load file.');
+		controller.$viewer.addClass('rc-text-viewer--invalid');
+		controller.$previewContent.html($('<pre/>').text(message));
+		if (controller.editor) {
+			controller.editor.setValue(message, -1);
+		}
+		LOGGER.warn('File viewer load failed', controller.fieldName, error);
+	}
+
+	/**
+	 * Updates file viewer validation status.
+	 *
+	 * @param {object} controller File viewer controller.
+	 * @param {object} formatted Formatting result.
+	 * @returns {void}
+	 */
+	function setFileViewerStatus(controller, formatted) {
+		controller.$viewer.toggleClass('rc-text-viewer--invalid', !formatted.ok);
+		if (!formatted || formatted.empty) {
+			controller.$status.html('').attr('title', '').attr('aria-label', '');
+			return;
+		}
+		if (formatted.ok) {
+			controller.$status
+				.attr('title', 'Valid ' + getModeLabel(controller.currentFileMode))
+				.attr('aria-label', 'Valid ' + getModeLabel(controller.currentFileMode))
+				.html($('<i/>', { class: 'fa-solid fa-check text-muted rc-text-viewer-status__valid', 'aria-hidden': 'true' }));
+			return;
+		}
+		controller.$status
+			.attr('title', 'Invalid ' + getModeLabel(controller.currentFileMode) + ': ' + formatted.error)
+			.attr('aria-label', 'Invalid ' + getModeLabel(controller.currentFileMode) + ': ' + formatted.error)
+			.html($('<i/>', { class: 'fa-solid fa-triangle-exclamation text-warning rc-text-viewer-status__invalid', 'aria-hidden': 'true' }));
+	}
+
+	/**
 	 * Appends mode tabs for a controller.
 	 *
 	 * @param {jQuery} $tabs Toolbar tabs container.
@@ -1299,23 +1997,34 @@
 	 */
 	function renderMarkdown(controller) {
 		const markdown = controller.$control.val() || '';
+		renderMarkdownContent(markdown, controller.$viewerContent);
+	}
+
+	/**
+	 * Renders Markdown text into a target element.
+	 *
+	 * @param {string} markdown Markdown source.
+	 * @param {jQuery} $target Target element.
+	 * @returns {void}
+	 */
+	function renderMarkdownContent(markdown, $target) {
 		if (!global.marked || typeof global.marked.parse !== 'function') {
-			controller.$viewerContent.html($('<pre/>').text(markdown));
+			$target.html($('<pre/>').text(markdown));
 			return;
 		}
 
 		try {
 			const html = global.marked.parse(markdown, { breaks: true, gfm: true });
-			controller.$viewerContent.html(sanitizeHtml(html));
+			$target.html(sanitizeHtml(html));
 			if (global.hljs) {
-				controller.$viewerContent.find('pre code').each(function () {
+				$target.find('pre code').each(function () {
 					global.hljs.highlightElement(this);
 				});
 			}
 		}
 		catch (e) {
-			controller.$viewerContent.html($('<pre/>').text(markdown));
-			LOGGER.warn('Markdown render failed', controller.fieldName, e);
+			$target.html($('<pre/>').text(markdown));
+			LOGGER.warn('Markdown render failed', e);
 		}
 	}
 
@@ -2287,6 +2996,11 @@
 	 */
 	function attachConfiguredViewers() {
 		(state.config.fields || []).forEach(function (field) {
+			if (field.isFile) {
+				attachEnhancedFileViewer(field);
+				return;
+			}
+
 			const $control = findFieldControl(field.name);
 			if (!$control.length) {
 				LOGGER.warn('Field control not found', field.name);
