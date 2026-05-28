@@ -8,6 +8,14 @@
 	const VIEW_MARKDOWN = 'markdown';
 	const VIEW_HTML = 'html';
 	const VIEW_JSON = 'json';
+	const ACE_TEXT_MODES = {
+		text: { label: 'Text', normalizes: false },
+		ini: { label: 'INI', normalizes: false },
+		css: { label: 'CSS', normalizes: true },
+		r: { label: 'R', normalizes: false },
+		xml: { label: 'XML', normalizes: true },
+		yaml: { label: 'YAML', normalizes: false },
+	};
 	const LAYOUT_NORMAL = 'normal';
 	const LAYOUT_EXPANDED = 'expanded';
 	const LAYOUT_FULLSCREEN = 'fullscreen';
@@ -29,6 +37,7 @@
 		editors: {},
 		markdownControllers: {},
 		jsonControllers: {},
+		aceTextControllers: {},
 	};
 
 	/**
@@ -1333,6 +1342,7 @@
 		if (modeConfig.module) {
 			editor.session.setMode(modeConfig.module);
 		}
+		configureAceIndent(editor, options.indent);
 		editor.setReadOnly(!!options.readOnly);
 		editor.setShowPrintMargin(false);
 		editor.setHighlightActiveLine(false);
@@ -1340,6 +1350,25 @@
 		editor.renderer.setShowGutter(true);
 		editor.renderer.setScrollMargin(6, 6, 0, 0);
 		return editor;
+	}
+
+	/**
+	 * Applies indentation settings to an Ace editor session.
+	 *
+	 * @param {object} editor Ace editor.
+	 * @param {number|string} indent Indentation config.
+	 * @returns {void}
+	 */
+	function configureAceIndent(editor, indent) {
+		if (indent === 'tab') {
+			editor.session.setUseSoftTabs(false);
+			return;
+		}
+		const spaces = parseInt(indent, 10);
+		if (Number.isFinite(spaces) && spaces > 0) {
+			editor.session.setUseSoftTabs(true);
+			editor.session.setTabSize(Math.min(spaces, 8));
+		}
 	}
 
 	/**
@@ -1411,14 +1440,14 @@
 	 * @param {string} format Storage/display format.
 	 * @returns {object}
 	 */
-	function formatJson(raw, format) {
+	function formatJson(raw, format, indent) {
 		const text = String(raw || '').trim();
 		if (text === '') {
 			return { ok: true, empty: true, text: '' };
 		}
 		try {
 			const parsed = JSON.parse(text);
-			return { ok: true, empty: false, text: stringifyJson(parsed, format) };
+			return { ok: true, empty: false, text: stringifyJson(parsed, format, indent) };
 		}
 		catch (e) {
 			return { ok: false, empty: false, text: raw, error: e.message || String(e) };
@@ -1432,8 +1461,147 @@
 	 * @param {string} format Storage/display format.
 	 * @returns {string}
 	 */
-	function stringifyJson(parsed, format) {
-		return JSON.stringify(parsed, null, format === 'compact' ? 0 : 2);
+	function stringifyJson(parsed, format, indent) {
+		return JSON.stringify(parsed, null, format === 'compact' ? 0 : getIndentText(indent));
+	}
+
+	/**
+	 * Returns an indentation string for formatter modes.
+	 *
+	 * @param {number|string} indent Indentation config.
+	 * @returns {string}
+	 */
+	function getIndentText(indent) {
+		if (indent === 'tab') {
+			return '\t';
+		}
+		const spaces = parseInt(indent, 10);
+		if (Number.isFinite(spaces) && spaces > 0) {
+			return new Array(Math.min(spaces, 8) + 1).join(' ');
+		}
+		return '  ';
+	}
+
+	/**
+	 * Formats text for an Ace language mode.
+	 *
+	 * @param {string} raw Raw editor value.
+	 * @param {string} mode Ace language mode key.
+	 * @param {string} format Storage/display format.
+	 * @param {number|string} indent Indentation config.
+	 * @returns {object}
+	 */
+	function formatAceText(raw, mode, format, indent) {
+		const text = String(raw || '');
+		if (text.trim() === '') {
+			return { ok: true, empty: true, text: '' };
+		}
+		if (mode === 'css') {
+			return { ok: true, empty: false, text: formatCss(text, format, indent) };
+		}
+		if (mode === 'xml') {
+			return formatXml(text, format, indent);
+		}
+		return { ok: true, empty: false, text: text };
+	}
+
+	/**
+	 * Formats CSS with a small, conservative token-based formatter.
+	 *
+	 * @param {string} raw Raw CSS.
+	 * @param {string} format Storage/display format.
+	 * @param {number|string} indent Indentation config.
+	 * @returns {string}
+	 */
+	function formatCss(raw, format, indent) {
+		const compact = String(raw || '')
+			.replace(/\/\*[\s\S]*?\*\//g, function (match) { return match.replace(/\s+/g, ' '); })
+			.replace(/\s+/g, ' ')
+			.replace(/\s*([{}:;,>+~])\s*/g, '$1')
+			.replace(/;}/g, '}')
+			.trim();
+		if (format === 'compact') {
+			return compact;
+		}
+
+		const indentText = getIndentText(indent);
+		let level = 0;
+		return compact
+			.replace(/\{/g, ' {\n')
+			.replace(/;/g, ';\n')
+			.replace(/\}/g, '\n}\n')
+			.split('\n')
+			.map(function (line) {
+				line = line.trim();
+				if (line === '') {
+					return '';
+				}
+				if (line.charAt(0) === '}') {
+					level = Math.max(level - 1, 0);
+				}
+				const output = new Array(level + 1).join(indentText) + line;
+				if (line.charAt(line.length - 1) === '{') {
+					level += 1;
+				}
+				return output;
+			})
+			.filter(function (line) { return line !== ''; })
+			.join('\n');
+	}
+
+	/**
+	 * Formats XML and reports parser errors.
+	 *
+	 * @param {string} raw Raw XML.
+	 * @param {string} format Storage/display format.
+	 * @param {number|string} indent Indentation config.
+	 * @returns {object}
+	 */
+	function formatXml(raw, format, indent) {
+		const parser = new DOMParser();
+		const doc = parser.parseFromString(String(raw || ''), 'application/xml');
+		const parseError = doc.getElementsByTagName('parsererror')[0];
+		if (parseError) {
+			return { ok: false, empty: false, text: raw, error: parseError.textContent || 'XML parse error' };
+		}
+
+		const serialized = new XMLSerializer().serializeToString(doc);
+		const compact = serialized.replace(/>\s+</g, '><').trim();
+		if (format === 'compact') {
+			return { ok: true, empty: false, text: compact };
+		}
+		return { ok: true, empty: false, text: prettyXml(compact, indent) };
+	}
+
+	/**
+	 * Pretty-prints compact XML.
+	 *
+	 * @param {string} compactXml Compact XML.
+	 * @param {number|string} indent Indentation config.
+	 * @returns {string}
+	 */
+	function prettyXml(compactXml, indent) {
+		const indentText = getIndentText(indent);
+		let level = 0;
+		return compactXml
+			.replace(/(>)(<)(\/*)/g, '$1\n$2$3')
+			.split('\n')
+			.map(function (line) {
+				line = line.trim();
+				if (line === '') {
+					return '';
+				}
+				if (/^<\//.test(line)) {
+					level = Math.max(level - 1, 0);
+				}
+				const output = new Array(level + 1).join(indentText) + line;
+				if (/^<[^!?/][^>]*[^/]?>$/.test(line) && !/^<[^>]+>.*<\/[^>]+>$/.test(line)) {
+					level += 1;
+				}
+				return output;
+			})
+			.filter(function (line) { return line !== ''; })
+			.join('\n');
 	}
 
 	/**
@@ -1525,6 +1693,7 @@
 			jsonOnly: jsonOnly,
 			displayFormat: displayFormat,
 			storageFormat: storageFormat,
+			indent: jsonConfig.indent || 2,
 			mode: jsonConfig.initialMode === VIEW_JSON ? VIEW_JSON : VIEW_RAW,
 			getActivePanel: function () { return getJsonActivePanel(controller); },
 			getPanelSet: function () { return controller.$viewer.add(controller.$rawPanel); },
@@ -1596,6 +1765,7 @@
 				mode: VIEW_JSON,
 				readOnly: !!field.readonly,
 				useWorker: false,
+				indent: controller.indent,
 			});
 			controller.editor = editor;
 			state.editors[fieldName] = editor;
@@ -1617,7 +1787,7 @@
 			syncTextViewerNormalSize(controller);
 			editor.resize();
 		}).catch(function (e) {
-			const formatted = formatJson($control.val() || '', controller.displayFormat);
+			const formatted = formatJson($control.val() || '', controller.displayFormat, controller.indent);
 			$viewer.html($('<pre/>', { class: 'rc-text-viewer__fallback' }).text(formatted.text));
 			setJsonStatus(controller, formatted);
 			LOGGER.warn('Ace failed to load', e);
@@ -1743,7 +1913,7 @@
 	 * @returns {void}
 	 */
 	function renderJsonFromControl(controller) {
-		const formatted = formatJson(controller.$control.val() || '', controller.displayFormat);
+		const formatted = formatJson(controller.$control.val() || '', controller.displayFormat, controller.indent);
 		setJsonStatus(controller, formatted);
 		if (!controller.editor) {
 			return;
@@ -1778,12 +1948,12 @@
 			return;
 		}
 		const raw = controller.editor.getValue();
-		const displayFormatted = formatJson(raw, controller.displayFormat);
+		const displayFormatted = formatJson(raw, controller.displayFormat, controller.indent);
 		setJsonStatus(controller, displayFormatted);
 		if (!displayFormatted.ok || controller.editor.getReadOnly()) {
 			return;
 		}
-		const storageFormatted = formatJson(raw, controller.storageFormat);
+		const storageFormatted = formatJson(raw, controller.storageFormat, controller.indent);
 		if ((controller.$control.val() || '') === storageFormatted.text) {
 			return;
 		}
@@ -1803,7 +1973,7 @@
 		if (!controller.editor || controller.updatingEditor) {
 			return;
 		}
-		const formatted = formatJson(controller.editor.getValue(), controller.displayFormat);
+		const formatted = formatJson(controller.editor.getValue(), controller.displayFormat, controller.indent);
 		setJsonStatus(controller, formatted);
 		if (!formatted.ok) {
 			return;
@@ -1857,6 +2027,430 @@
 	}
 
 	/**
+	 * Builds an Ace text controller for one text field.
+	 *
+	 * @param {jQuery} $control Field input or textarea.
+	 * @param {object} field Field configuration.
+	 * @param {string} mode Ace language mode key.
+	 * @returns {object}
+	 */
+	function createAceTextController($control, field, mode) {
+		const modeMeta = ACE_TEXT_MODES[mode] || { label: mode.toUpperCase(), normalizes: false };
+		const fieldName = field.name;
+		const modeConfig = field[mode] || {};
+		const editorOnly = !!modeConfig.editorOnly;
+		const storageFormat = $control.is('textarea') && modeConfig.format !== 'compact' ? 'pretty' : 'compact';
+		const initialHeight = Number.isInteger(modeConfig.height) && modeConfig.height > 0
+			? Math.max(modeConfig.height, MIN_MARKDOWN_HEIGHT)
+			: null;
+		const editorId = `rc-text-viewer-${mode}-ace-${fieldName}`;
+		const $toolbar = $('<div/>', {
+			class: 'rc-text-viewer-md-toolbar rc-text-viewer-code-toolbar d-print-none',
+			'data-rc-text-viewer-field': fieldName,
+		});
+		const $tabs = $('<span/>', { class: 'rc-text-viewer-md-tabs' });
+		const $editability = createEditStateIndicator(!!field.readonly);
+		const $rawTab = $('<a/>', {
+			href: 'javascript:;',
+			class: 'rc-text-viewer-md-tab',
+			'data-rc-code-mode': VIEW_RAW,
+			text: 'Raw',
+		});
+		const $codeTab = $('<a/>', {
+			href: 'javascript:;',
+			class: 'rc-text-viewer-md-tab',
+			'data-rc-code-mode': mode,
+			text: modeConfig.label || modeMeta.label,
+		});
+		const $status = $('<span/>', {
+			class: 'rc-text-viewer-json-status',
+			'aria-live': 'polite',
+		});
+		const $actions = $('<span/>', { class: 'rc-text-viewer-md-actions' });
+		const $expandButton = createIconButton('expand', 'fa-solid fa-arrows-left-right', 'Expand to row width');
+		const $fullscreenButton = createIconButton('fullscreen', 'fa-solid fa-maximize', 'Fullscreen');
+		const $collapseButton = createIconButton('collapse', 'fa-solid fa-down-left-and-up-right-to-center', 'Collapse');
+		if (field.rowConfig !== 'split') {
+			$expandButton.addClass('rc-text-viewer-md-action--unavailable');
+		}
+		const $viewer = $('<div/>', {
+			class: 'rc-text-viewer-json-preview rc-text-viewer-code-preview',
+			'data-rc-text-viewer-field': fieldName,
+		});
+		const $editor = $('<div/>', { id: editorId, class: 'rc-text-viewer__ace' });
+		const $resizeHandle = $('<div/>', {
+			class: 'rc-text-viewer-md-resize-handle',
+			role: 'separator',
+			'aria-orientation': 'horizontal',
+			title: 'Drag to resize',
+		});
+		const $rawPanel = $('<div/>', {
+			class: 'rc-text-viewer-raw-panel',
+			'data-rc-text-viewer-field': fieldName,
+		});
+		const $rawResizeHandle = $('<div/>', {
+			class: 'rc-text-viewer-md-resize-handle',
+			role: 'separator',
+			'aria-orientation': 'horizontal',
+			title: 'Drag to resize',
+		});
+		const canExpandRaw = $control.is('textarea');
+		const controller = createTextViewerController({
+			viewerType: mode,
+			field: field,
+			$control: $control,
+			$toolbar: $toolbar,
+			$viewer: $viewer,
+			$editor: $editor,
+			$rawPanel: $rawPanel,
+			$resizeHandle: $resizeHandle,
+			$rawResizeHandle: $rawResizeHandle,
+			$actions: $actions,
+			$expandButton: $expandButton,
+			$fullscreenButton: $fullscreenButton,
+			$collapseButton: $collapseButton,
+			initialHeight: initialHeight,
+		});
+		$.extend(controller, {
+			$status: $status,
+			aceMode: mode,
+			modeLabel: modeConfig.label || modeMeta.label,
+			editorOnly: editorOnly,
+			normalizes: !!modeMeta.normalizes,
+			displayFormat: 'pretty',
+			storageFormat: storageFormat,
+			indent: modeConfig.indent || 2,
+			mode: modeConfig.initialMode === mode ? mode : VIEW_RAW,
+			getActivePanel: function () { return getAceTextActivePanel(controller); },
+			getPanelSet: function () { return controller.$viewer.add(controller.$rawPanel); },
+			getContentHeight: function () { return getAceTextContentHeight(controller); },
+			setHeight: function (height, userResize) { setTextViewerHeight(controller, height, userResize !== false); },
+			syncSize: function (captureHeight) { syncTextViewerNormalSize(controller, captureHeight); },
+			restoreVisibleMode: function () { restoreAceTextVisibleMode(controller); },
+			setMode: function (nextMode) { setAceTextMode(controller, nextMode); },
+			updateToolbar: function () { updateAceTextToolbar(controller); },
+			isPanelMode: function () { return controller.mode === controller.aceMode || (controller.mode === VIEW_RAW && controller.canExpandRaw); },
+			modeAttribute: 'data-rc-code-mode',
+			layoutAttribute: 'data-rc-code-layout',
+			defaultMode: mode,
+			updatingEditor: false,
+			updatingControl: false,
+			skipNextControlRender: false,
+			editorChangeGeneration: 0,
+			suppressedEditorChangeGeneration: null,
+		});
+
+		if (field.readonly) {
+			applyReadonlyState($control, controller.$row);
+		}
+
+		if (editorOnly) {
+			controller.mode = mode;
+			$tabs.append($editability, $codeTab, $status);
+		}
+		else {
+			$tabs.append($editability, $rawTab, $('<span/>', { class: 'rc-text-viewer-md-tab-separator', text: '|' }), $codeTab, $status);
+		}
+		$actions.append($expandButton, $fullscreenButton, $collapseButton);
+		$toolbar.append($tabs, $actions);
+		$viewer.append($editor, $resizeHandle);
+		if (canExpandRaw) {
+			$control.before($rawPanel);
+			$rawPanel.append($control, $rawResizeHandle);
+			$rawPanel.before($toolbar);
+			$rawPanel.after($viewer);
+		}
+		else {
+			$control.before($toolbar);
+			$control.after($viewer);
+		}
+
+		$toolbar.on('click', '[data-rc-code-mode]', function (ev) {
+			ev.preventDefault();
+			const nextMode = $(this).attr('data-rc-code-mode');
+			if (nextMode !== controller.mode) {
+				setAceTextMode(controller, nextMode);
+			}
+		});
+		$toolbar.on('click', '[data-rc-text-viewer-action]', function (ev) {
+			ev.preventDefault();
+			handleTextViewerAction(controller, $(this).attr('data-rc-text-viewer-action'));
+		});
+		$control.on('input change keyup', debounce(function () {
+			if (controller.skipNextControlRender) {
+				controller.skipNextControlRender = false;
+				return;
+			}
+			if (!controller.updatingControl) {
+				renderAceTextFromControl(controller);
+			}
+		}, 100));
+
+		ensureAce().then(function () {
+			const editor = createAceEditor(editorId, {
+				mode: mode,
+				readOnly: !!field.readonly,
+				useWorker: false,
+				indent: controller.indent,
+			});
+			controller.editor = editor;
+			state.editors[`${fieldName}-${mode}`] = editor;
+			const syncFromEditor = debounce(function () {
+				syncAceTextFromEditor(controller);
+			}, 100);
+			editor.session.on('change', function () {
+				const changeGeneration = controller.editorChangeGeneration;
+				if (changeGeneration === controller.suppressedEditorChangeGeneration) {
+					controller.suppressedEditorChangeGeneration = null;
+					return;
+				}
+				syncFromEditor();
+			});
+			editor.on('blur', function () {
+				normalizeAceTextEditor(controller);
+			});
+			renderAceTextFromControl(controller);
+			syncTextViewerNormalSize(controller);
+			editor.resize();
+		}).catch(function (e) {
+			const formatted = formatAceText($control.val() || '', controller.aceMode, controller.displayFormat, controller.indent);
+			$viewer.html($('<pre/>', { class: 'rc-text-viewer__fallback' }).text(formatted.text));
+			setAceTextStatus(controller, formatted);
+			LOGGER.warn('Ace failed to load for ' + mode, e);
+		});
+
+		initTextViewerResizeHandles(controller);
+		setAceTextMode(controller, controller.mode);
+		return controller;
+	}
+
+	/**
+	 * Sets the visible generic Ace text mode.
+	 *
+	 * @param {object} controller Ace text controller.
+	 * @param {string} mode Desired mode.
+	 * @returns {void}
+	 */
+	function setAceTextMode(controller, mode) {
+		if (controller.editorOnly || mode === controller.aceMode) {
+			mode = controller.aceMode;
+		}
+		else {
+			mode = VIEW_RAW;
+		}
+
+		const previousMode = controller.mode;
+		const previousLayout = controller.layout;
+		if (previousMode !== mode && previousLayout !== LAYOUT_NORMAL) {
+			rememberTextViewerHeight(controller);
+			restoreTextViewerLayout(controller);
+		}
+		controller.mode = mode;
+		if (mode === VIEW_RAW) {
+			normalizeAceTextEditor(controller);
+			syncTextViewerNormalSize(controller, true);
+			controller.$control.show();
+			controller.$rawPanel.css('display', controller.canExpandRaw ? 'flex' : 'none');
+			controller.$expandLink.hide();
+			controller.$viewer.css('display', 'none');
+		}
+		else {
+			syncTextViewerNormalSize(controller, true);
+			controller.$control.hide();
+			controller.$rawPanel.css('display', 'none');
+			controller.$expandLink.hide();
+			controller.$viewer.css('display', 'flex');
+			resizeTextViewerEditor(controller);
+		}
+		updateAceTextToolbar(controller);
+		if (previousMode !== mode && previousLayout === LAYOUT_EXPANDED) {
+			expandTextViewer(controller);
+		}
+		if (previousMode !== mode && previousLayout === LAYOUT_FULLSCREEN) {
+			fullscreenTextViewer(controller);
+		}
+	}
+
+	/**
+	 * Updates generic Ace text toolbar state.
+	 *
+	 * @param {object} controller Ace text controller.
+	 * @returns {void}
+	 */
+	function updateAceTextToolbar(controller) {
+		updateTextViewerToolbar(controller);
+	}
+
+	/**
+	 * Returns the active generic Ace text panel.
+	 *
+	 * @param {object} controller Ace text controller.
+	 * @returns {jQuery}
+	 */
+	function getAceTextActivePanel(controller) {
+		return controller.mode === VIEW_RAW && controller.canExpandRaw ? controller.$rawPanel : controller.$viewer;
+	}
+
+	/**
+	 * Restores the visible panel for a generic Ace text mode.
+	 *
+	 * @param {object} controller Ace text controller.
+	 * @returns {void}
+	 */
+	function restoreAceTextVisibleMode(controller) {
+		if (controller.mode === VIEW_RAW) {
+			controller.$control.show();
+			controller.$rawPanel.css('display', controller.canExpandRaw ? 'flex' : 'none');
+			controller.$viewer.css('display', 'none');
+			return;
+		}
+		controller.$control.hide();
+		controller.$rawPanel.css('display', 'none');
+		controller.$viewer.css('display', 'flex');
+		resizeTextViewerEditor(controller);
+	}
+
+	/**
+	 * Calculates content height for a generic Ace text panel.
+	 *
+	 * @param {object} controller Ace text controller.
+	 * @returns {number}
+	 */
+	function getAceTextContentHeight(controller) {
+		if (controller.mode === VIEW_RAW && controller.canExpandRaw) {
+			const control = controller.$control[0];
+			return control ? control.scrollHeight + controller.$rawResizeHandle.outerHeight() : MIN_MARKDOWN_HEIGHT;
+		}
+		if (controller.editor) {
+			const lineHeight = controller.editor.renderer.lineHeight || 16;
+			return (controller.editor.session.getScreenLength() * lineHeight) + 24;
+		}
+		return MIN_MARKDOWN_HEIGHT;
+	}
+
+	/**
+	 * Renders the raw field value into a generic Ace editor.
+	 *
+	 * @param {object} controller Ace text controller.
+	 * @returns {void}
+	 */
+	function renderAceTextFromControl(controller) {
+		const formatted = formatAceText(controller.$control.val() || '', controller.aceMode, controller.displayFormat, controller.indent);
+		setAceTextStatus(controller, formatted);
+		if (!controller.editor) {
+			return;
+		}
+		controller.updatingEditor = true;
+		setAceTextEditorValue(controller, formatted.text);
+		controller.updatingEditor = false;
+		resizeTextViewerEditor(controller);
+	}
+
+	/**
+	 * Sets generic Ace editor text without treating the event as a user edit.
+	 *
+	 * @param {object} controller Ace text controller.
+	 * @param {string} value Editor value.
+	 * @returns {void}
+	 */
+	function setAceTextEditorValue(controller, value) {
+		controller.editorChangeGeneration += 1;
+		controller.suppressedEditorChangeGeneration = controller.editorChangeGeneration;
+		controller.editor.setValue(value, -1);
+	}
+
+	/**
+	 * Syncs generic Ace editor content into the raw REDCap field.
+	 *
+	 * @param {object} controller Ace text controller.
+	 * @returns {void}
+	 */
+	function syncAceTextFromEditor(controller) {
+		if (!controller.editor || controller.updatingEditor) {
+			return;
+		}
+		const raw = controller.editor.getValue();
+		const displayFormatted = formatAceText(raw, controller.aceMode, controller.displayFormat, controller.indent);
+		setAceTextStatus(controller, displayFormatted);
+		if (!displayFormatted.ok || controller.editor.getReadOnly()) {
+			return;
+		}
+		const storageFormatted = formatAceText(raw, controller.aceMode, controller.storageFormat, controller.indent);
+		if ((controller.$control.val() || '') === storageFormatted.text) {
+			return;
+		}
+		controller.skipNextControlRender = true;
+		controller.updatingControl = true;
+		controller.$control.val(storageFormatted.text).trigger('change');
+		controller.updatingControl = false;
+	}
+
+	/**
+	 * Normalizes generic Ace editor content when supported by the mode.
+	 *
+	 * @param {object} controller Ace text controller.
+	 * @returns {void}
+	 */
+	function normalizeAceTextEditor(controller) {
+		if (!controller.editor || controller.updatingEditor || !controller.normalizes) {
+			return;
+		}
+		const formatted = formatAceText(controller.editor.getValue(), controller.aceMode, controller.displayFormat, controller.indent);
+		setAceTextStatus(controller, formatted);
+		if (!formatted.ok) {
+			return;
+		}
+		controller.updatingEditor = true;
+		setAceTextEditorValue(controller, formatted.text);
+		controller.updatingEditor = false;
+		syncAceTextFromEditor(controller);
+		resizeTextViewerEditor(controller);
+	}
+
+	/**
+	 * Updates generic Ace text validation status.
+	 *
+	 * @param {object} controller Ace text controller.
+	 * @param {object} formatted Formatting result.
+	 * @returns {void}
+	 */
+	function setAceTextStatus(controller, formatted) {
+		controller.$viewer.toggleClass('rc-text-viewer--invalid', !formatted.ok);
+		controller.$toolbar.toggleClass('rc-text-viewer--invalid', !formatted.ok);
+		if (!controller.normalizes || formatted.empty) {
+			controller.$status.html('').attr('title', '').attr('aria-label', '');
+			return;
+		}
+		if (formatted.ok) {
+			controller.$status
+				.attr('title', 'Valid ' + controller.modeLabel)
+				.attr('aria-label', 'Valid ' + controller.modeLabel)
+				.html($('<i/>', { class: 'fa-solid fa-check text-muted rc-text-viewer-json-status__valid', 'aria-hidden': 'true' }));
+			return;
+		}
+		controller.$status
+			.attr('title', 'Invalid ' + controller.modeLabel + ': ' + formatted.error)
+			.attr('aria-label', 'Invalid ' + controller.modeLabel + ': ' + formatted.error)
+			.html($('<i/>', { class: 'fa-solid fa-triangle-exclamation text-warning rc-text-viewer-json-status__invalid', 'aria-hidden': 'true' }));
+	}
+
+	/**
+	 * Renders a generic Ace text enhancement and wires it to field changes.
+	 *
+	 * @param {jQuery} $control Field input or textarea.
+	 * @param {object} field Field configuration.
+	 * @param {string} mode Ace language mode key.
+	 * @returns {void}
+	 */
+	function attachAceTextViewer($control, field, mode) {
+		if (!ACE_TEXT_MODES[mode]) {
+			LOGGER.warn('Unsupported Ace text mode skipped', mode, field.name);
+			return;
+		}
+		state.aceTextControllers[`${field.name}-${mode}`] = createAceTextController($control, field, mode);
+	}
+
+	/**
 	 * Attaches all configured viewers after REDCap has rendered the form.
 	 *
 	 * @returns {void}
@@ -1880,6 +2474,9 @@
 				}
 				if (viewerType === 'json') {
 					attachJsonViewer($control, field);
+				}
+				if (ACE_TEXT_MODES[viewerType]) {
+					attachAceTextViewer($control, field, viewerType);
 				}
 			});
 		});
@@ -1918,6 +2515,7 @@
 			editors: state.editors,
 			markdownControllers: state.markdownControllers,
 			jsonControllers: state.jsonControllers,
+			aceTextControllers: state.aceTextControllers,
 		};
 	}
 

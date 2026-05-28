@@ -28,6 +28,48 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 	 */
 	const AT_ENHANCED_TEXT_MARKDOWN = "@ENHANCED-TEXT-MARKDOWN";
 
+	/**
+	 * REDCap action tag that enables plain text enhancements.
+	 *
+	 * @var string
+	 */
+	const AT_ENHANCED_TEXT_PLAIN = "@ENHANCED-TEXT-PLAIN";
+
+	/**
+	 * REDCap action tag that enables CSS text enhancements.
+	 *
+	 * @var string
+	 */
+	const AT_ENHANCED_TEXT_CSS = "@ENHANCED-TEXT-CSS";
+
+	/**
+	 * REDCap action tag that enables INI text enhancements.
+	 *
+	 * @var string
+	 */
+	const AT_ENHANCED_TEXT_INI = "@ENHANCED-TEXT-INI";
+
+	/**
+	 * REDCap action tag that enables R text enhancements.
+	 *
+	 * @var string
+	 */
+	const AT_ENHANCED_TEXT_R = "@ENHANCED-TEXT-R";
+
+	/**
+	 * REDCap action tag that enables XML text enhancements.
+	 *
+	 * @var string
+	 */
+	const AT_ENHANCED_TEXT_XML = "@ENHANCED-TEXT-XML";
+
+	/**
+	 * REDCap action tag that enables YAML text enhancements.
+	 *
+	 * @var string
+	 */
+	const AT_ENHANCED_TEXT_YAML = "@ENHANCED-TEXT-YAML";
+
 	#region Hooks
 
 	/**
@@ -134,6 +176,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			'modes' => array(
 				'json' => $this->getAceModuleConfig('ace/mode/json', $ace_path . 'mode-json.js', 'ace/mode/json_worker'),
 				'markdown' => $this->getAceModuleConfig('ace/mode/markdown', $ace_path . 'mode-markdown.js', null),
+				'text' => $this->getAceModuleConfig('ace/mode/text', $ace_path . 'mode-text.js', null),
 				'ini' => $this->getAceModuleConfig('ace/mode/ini', $ace_path . 'mode-ini.js', null),
 				'css' => $this->getAceModuleConfig('ace/mode/css', $ace_path . 'mode-css.js', 'ace/mode/css_worker'),
 				'r' => $this->getAceModuleConfig('ace/mode/r', $ace_path . 'mode-r.js', null),
@@ -228,6 +271,12 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 		$tags = [
 			self::AT_ENHANCED_TEXT_JSON,
 			self::AT_ENHANCED_TEXT_MARKDOWN,
+			self::AT_ENHANCED_TEXT_PLAIN,
+			self::AT_ENHANCED_TEXT_CSS,
+			self::AT_ENHANCED_TEXT_INI,
+			self::AT_ENHANCED_TEXT_R,
+			self::AT_ENHANCED_TEXT_XML,
+			self::AT_ENHANCED_TEXT_YAML,
 			'@READONLY',
 			'@READONLY-FORM',
 			'@READONLY-SURVEY',
@@ -272,6 +321,37 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			} else {
 				$viewerFields[$fieldName]['viewers'][] = 'json';
 				$viewerFields[$fieldName]['json'] = $jsonParams;
+			}
+		}
+		$ace_enhancements = array(
+			'text' => array('tag' => self::AT_ENHANCED_TEXT_PLAIN, 'label' => 'Text', 'allowTextField' => false),
+			'css' => array('tag' => self::AT_ENHANCED_TEXT_CSS, 'label' => 'CSS', 'allowTextField' => true),
+			'ini' => array('tag' => self::AT_ENHANCED_TEXT_INI, 'label' => 'INI', 'allowTextField' => false),
+			'r' => array('tag' => self::AT_ENHANCED_TEXT_R, 'label' => 'R', 'allowTextField' => false),
+			'xml' => array('tag' => self::AT_ENHANCED_TEXT_XML, 'label' => 'XML', 'allowTextField' => true),
+			'yaml' => array('tag' => self::AT_ENHANCED_TEXT_YAML, 'label' => 'YAML', 'allowTextField' => false),
+		);
+		foreach ($ace_enhancements as $mode => $enhancement) {
+			foreach ($actionTags[$enhancement['tag']] ?? [] as $fieldName => $tagInfo) {
+				$fieldMetadata = $metadata[$fieldName] ?? null;
+				$allowedTypes = $enhancement['allowTextField'] ? ['text', 'textarea'] : ['textarea'];
+				if (empty($fieldMetadata) || !in_array($fieldMetadata['element_type'] ?? '', $allowedTypes, true)) continue;
+				$params = $this->parseAceTextParams($tagInfo['params'] ?? '', $mode);
+				if (($fieldMetadata['element_type'] ?? '') === 'text') {
+					$params['format'] = 'compact';
+				}
+				if (!isset($viewerFields[$fieldName])) {
+					$viewerFields[$fieldName] = [
+						'name' => $fieldName,
+						'viewers' => [$mode],
+						'readonly' => $is_readonly($fieldName),
+						'rowConfig' => in_array($fieldMetadata['custom_alignment'] ?? '', ['LH', 'LV']) ? 'full' : 'split',
+						$mode => $params,
+					];
+				} else {
+					$viewerFields[$fieldName]['viewers'][] = $mode;
+					$viewerFields[$fieldName][$mode] = $params;
+				}
 			}
 		}
 
@@ -353,6 +433,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			'jsonOnly' => false,
 			'height' => null,
 			'format' => 'pretty',
+			'indent' => 2,
 		);
 		$value = trim((string)$params);
 		if ($value === '') {
@@ -398,10 +479,105 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 					$config['format'] = $format;
 				}
 			}
+			if (strpos($token, 'indent:') === 0) {
+				$indent = trim(substr($token, strlen('indent:')));
+				if ($indent === 'tab') {
+					$config['indent'] = 'tab';
+				}
+				if (ctype_digit($indent) && (int)$indent > 0 && (int)$indent <= 8) {
+					$config['indent'] = (int)$indent;
+				}
+			}
 		}
 
 		if ($config['jsonOnly']) {
 			$config['initialMode'] = 'json';
+		}
+		return $config;
+	}
+
+	/**
+	 * Parses generic Ace text enhancement parameters.
+	 *
+	 * @param mixed  $params Raw action-tag parameter value.
+	 * @param string $mode   Ace language mode key.
+	 * @return array
+	 */
+	private function parseAceTextParams($params, $mode)
+	{
+		$config = array(
+			'initialMode' => 'raw',
+			'editorOnly' => false,
+			'height' => null,
+			'format' => 'pretty',
+			'indent' => 2,
+			'mode' => $mode,
+			'label' => strtoupper($mode),
+		);
+		if ($mode === 'text') {
+			$config['label'] = 'Text';
+		}
+		if ($mode === 'r') {
+			$config['label'] = 'R';
+		}
+
+		$value = trim((string)$params);
+		if ($value === '') {
+			return $config;
+		}
+
+		$decoded = json_decode($value, true);
+		if (is_string($decoded)) {
+			$value = $decoded;
+		}
+		else {
+			$value = trim($value, "\"'");
+		}
+
+		$tokens = array_map('trim', explode(',', strtolower($value)));
+		foreach ($tokens as $token) {
+			if ($token === '') {
+				continue;
+			}
+			if ($token === $mode . '-only' || $token === 'editor-only') {
+				$config['editorOnly'] = true;
+				$config['initialMode'] = $mode;
+				continue;
+			}
+			if (strpos($token, 'initial:') === 0) {
+				$initial_mode = trim(substr($token, strlen('initial:')));
+				if ($initial_mode === $mode || $initial_mode === 'editor') {
+					$config['initialMode'] = $mode;
+				}
+				if ($initial_mode === 'raw') {
+					$config['initialMode'] = 'raw';
+				}
+			}
+			if (strpos($token, 'height:') === 0) {
+				$height = trim(substr($token, strlen('height:')));
+				if (ctype_digit($height) && (int)$height > 0) {
+					$config['height'] = (int)$height;
+				}
+			}
+			if (in_array($mode, ['css', 'xml'], true) && strpos($token, 'format:') === 0) {
+				$format = trim(substr($token, strlen('format:')));
+				if (in_array($format, ['pretty', 'compact'], true)) {
+					$config['format'] = $format;
+				}
+			}
+			if (in_array($mode, ['css', 'xml'], true) && strpos($token, 'indent:') === 0) {
+				$indent = trim(substr($token, strlen('indent:')));
+				if ($indent === 'tab') {
+					$config['indent'] = 'tab';
+				}
+				if (ctype_digit($indent) && (int)$indent > 0 && (int)$indent <= 8) {
+					$config['indent'] = (int)$indent;
+				}
+			}
+		}
+
+		if ($config['editorOnly']) {
+			$config['initialMode'] = $mode;
 		}
 		return $config;
 	}

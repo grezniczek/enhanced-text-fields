@@ -3,55 +3,72 @@
 A REDCap External Module that enhances REDCap text fields with editing,
 validation, formatting, and preview tools for text-based content types.
 
-## Action tags
+## Action Tags
 
-- `@ENHANCED-TEXT-JSON` enhances text and Notes field values with a JSON editor,
-  validation feedback, and configurable storage formatting.
-- `@ENHANCED-TEXT-MARKDOWN` enhances Notes field values with Raw, Markdown
-  editor, and rendered HTML preview modes.
+- `@ENHANCED-TEXT-PLAIN` adds a plain text Ace editor. It supports Notes fields.
+- `@ENHANCED-TEXT-JSON` adds a JSON editor with validation and layout
+  normalization. It supports text and Notes fields.
+- `@ENHANCED-TEXT-MARKDOWN` adds Raw, Markdown editor, and rendered HTML preview
+  modes. It supports Notes fields.
+- `@ENHANCED-TEXT-CSS` adds a CSS editor with layout normalization. It supports
+  text and Notes fields.
+- `@ENHANCED-TEXT-INI` adds an INI editor. It supports Notes fields.
+- `@ENHANCED-TEXT-R` adds an R editor. It supports Notes fields.
+- `@ENHANCED-TEXT-XML` adds an XML editor with validation and layout
+  normalization. It supports text and Notes fields.
+- `@ENHANCED-TEXT-YAML` adds a YAML editor. It supports Notes fields.
 
-### JSON parameters
+Examples:
 
-`@ENHANCED-TEXT-JSON` accepts a quoted, comma-separated parameter list:
+- `@ENHANCED-TEXT-JSON="initial:json, indent:4"`
+- `@ENHANCED-TEXT-MARKDOWN="initial:html, height:240"`
+- `@ENHANCED-TEXT-CSS="initial:css, format:pretty"`
+- `@ENHANCED-TEXT-XML="xml-only, indent:tab"`
+- `@ENHANCED-TEXT-YAML="initial:yaml"`
 
-- `@ENHANCED-TEXT-JSON="initial:json"` opens the field in JSON mode.
-- `@ENHANCED-TEXT-JSON="initial:raw"` opens the field in Raw mode. This is the
-  default when no parameter is provided.
-- `@ENHANCED-TEXT-JSON="height:200"` sets the initial editor height in pixels.
-- `@ENHANCED-TEXT-JSON="format:pretty"` stores valid JSON with two-space
-  indentation.
-- `@ENHANCED-TEXT-JSON="format:compact"` stores valid JSON without whitespace.
-  Text fields always use compact formatting because they do not support
-  newlines.
-- `@ENHANCED-TEXT-JSON="json-only"` opens in JSON mode and hides the Raw tab.
-  This takes precedence over `initial:*` parameters.
+## Parameters
 
-### Markdown parameters
+Action-tag parameters are optional. When provided, use a quoted,
+comma-separated list such as `@ENHANCED-TEXT-JSON="initial:json, height:240"`.
 
-`@ENHANCED-TEXT-MARKDOWN` accepts a quoted, comma-separated parameter list:
+- `initial:*` sets the first visible mode. Use `initial:raw` for the REDCap raw
+  field. Use `initial:json`, `initial:css`, `initial:xml`, `initial:ini`,
+  `initial:r`, `initial:yaml`, or `initial:text` for the corresponding editor.
+  Markdown also supports `initial:md` and `initial:html`.
+- `height:200` sets the initial editor or preview height in pixels.
+- `format:pretty` stores normalized JSON, CSS, or XML with line breaks and
+  indentation when the underlying field supports newlines.
+- `format:compact` stores normalized JSON, CSS, or XML without layout
+  whitespace.
+- `indent:2`, `indent:4`, or `indent:tab` controls pretty indentation for JSON,
+  CSS, and XML. The default is two spaces.
+- `json-only`, `md-only`, `css-only`, `xml-only`, `text-only`, `ini-only`,
+  `r-only`, or `yaml-only` opens the enhanced mode and hides the Raw tab.
+  `editor-only` is accepted as a generic alias for the non-Markdown Ace editor
+  modes.
 
-- `@ENHANCED-TEXT-MARKDOWN="initial:md"` opens the field in Markdown editor
-  mode.
-- `@ENHANCED-TEXT-MARKDOWN="initial:html"` opens the field in rendered HTML
-  preview mode.
-- `@ENHANCED-TEXT-MARKDOWN="initial:raw"` opens the field in Raw mode. This is
-  the default when no parameter is provided.
-- `@ENHANCED-TEXT-MARKDOWN="height:200"` sets the initial editor or preview
-  height in pixels.
-- `@ENHANCED-TEXT-MARKDOWN="md-only"` hides the Raw tab. This takes precedence
-  over `initial:*` parameters.
+## Normalization
 
-There is intentionally no `raw-only` option; omit the action tag when Markdown
-editing and preview should not be available.
+JSON, CSS, and XML editors normalize content when the enhanced editor syncs back
+to the REDCap field. REDCap text fields cannot store newlines, so these modes
+always store compact one-line values in text fields even when `format:pretty` is
+configured.
 
-## Future file fields
+The JSON editor always normalizes valid JSON layout in the editor itself. The
+stored value uses the configured `format` for Notes fields and compact storage
+for text fields.
+
+YAML is currently edited as YAML but is not normalized by this module. YAML
+indentation is therefore left exactly as entered.
+
+There is intentionally no `raw-only` option; omit the action tag when enhanced
+editing or preview should not be available.
+
+## Future File Fields
 
 File upload fields may later support an `@ENHANCED-TEXT-AUTO` action tag that
 selects an enhancement mode from the uploaded file extension or detected text
 type. This is intentionally not implemented yet.
-
-
-
 
 ## TODO
 
