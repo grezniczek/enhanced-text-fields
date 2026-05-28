@@ -1,47 +1,49 @@
-# Coding Rules
+# AGENTS.md
 
-## PHP
+## Purpose
 
-- Avoid chaining function calls for functions that return complex results, i.e., do write:
-  ```php
-  return function_a(function_b(function_c($some_args)));
-  ```
-  Instead, assign results to variables first, then pass the variables. This helps debugging a ton, and can still be optimized once code is stable.
+This repository is a REDCap External Module. Prefer small, reviewable changes that fit REDCap/External Module conventions and remain easy to debug in a WSL-based development setup.
 
-- Always add PHPDoc blocks to all functions and variables (except for const declarations - only add if necessary, e.g., when the constant name is not self-explanatory).
-- For complex operations or operations that are not immediately evident, add concise comments, but do not litter with comments.
-- When outputting HTML, prefer
-  ```php
-  ?>
-  <div>
-    <what-ever />
-  </div>
-  <?php
-  ```
-  over `print '<div>...</div>';` so that at least humans using a code editor can benefit from syntax highlighting.
+## Working Rules
 
-## JS
+* Before changing code, inspect the relevant files and briefly state the intended approach.
+* Prefer minimal, targeted changes over broad refactors unless refactoring is explicitly requested.
+* Do not install packages, change global tooling, or modify unrelated files without approval.
+* For each completed work slice, suggest a concise commit message.
 
-- For any reasonably complex JS to be delivered to the client, prefer to do so in a JS file.
-- In JS files, avoid to litter the global scope. Wrap stuff in an IEFE and expose only a minimal public interface (usually for taking initial config, or to expose public hooks or methods).
-- jQuery is available in REDCap. Prefer using it over direct DOM manipulation (unless trivial or necessary).
-- Make use of ConsoleDebugLogger.js and the javascript-debug project setting to output useful debug info to the console, e.g. to show initial config, or results of complex-ish operations.
+## PHP Conventions
 
+* Avoid deeply nested/chained calls when the intermediate result is non-trivial. Assign intermediate values to named variables to aid debugging.
+* Add PHPDoc for classes, methods, public/protected properties, non-obvious array shapes, and mixed/structured values. Do not add noisy PHPDoc for every obvious local variable.
+* Add concise comments for complex or non-obvious logic, but avoid restating what the code already says.
+* When outputting substantial HTML from PHP, prefer leaving PHP mode and writing HTML directly instead of constructing large HTML strings with `print`/concatenation.
 
-## External Module Framework
+## JavaScript Conventions
 
-- Documentation can be found here: https://github.com/vanderbilt-redcap/external-module-framework-docs/blob/main/README.md (start navigating here)
+* Put reasonably complex client-side JavaScript in a `.js` file rather than inline PHP-generated script blocks.
+* Avoid polluting the global scope. Use an IIFE/module pattern and expose only the minimal public interface needed for initialization or public hooks.
+* jQuery is available in REDCap. Prefer jQuery for REDCap-integrated UI/event code unless plain DOM APIs are clearly simpler.
+* Use `ConsoleDebugLogger.js` together with the `javascript-debug` project setting for useful debug output, especially for initialization config and non-trivial client-side state.
 
-- If peeking into code is necessary, ask first and then look here: \\wsl.localhost\Ubuntu\home\gr\redcap\external_modules
+## REDCap External Module Notes
 
-- Class autoloading is not available automatically for this module. Add or maintain a small module-local autoloader, or explicitly include/require helper classes before using them.
+* External Module Framework documentation starts here:
+  `/home/gr/redcap/external_modules/docs/`
+* Class autoloading is not automatically available for this module. Maintain a small module-local autoloader or explicitly `require_once` helper classes before use.
+* If framework behavior is unclear, check the official EM docs first. Inspect local REDCap/External Module source only when needed and only within the permitted local development environment.
 
-# Environment
+## Local Development Environment
 
-- The repo is in WSL/Ubuntu: \\wsl.localhost\Ubuntu\home\gr\redcap\dev-modules\text_viewers_v9.9.9\
-- Use php and node from WSL for tests etc.
-- Suggest to install tools if needed.
+* Work in WSL/Ubuntu.
+* Use `php` and `node` for checks and tests.
+* Local REDCap external modules path, if inspection is permitted:
+  `/home/gr/redcap/external_modules/`
 
-# Workflow
+## Verification
 
-- For each completed work slice, suggest a concise commit message.
+When relevant to the changed files:
+
+* Run `php -l <file>` for changed PHP files.
+* Run available project tests/lints if a test or lint command exists.
+* For JavaScript changes, run the available npm script if present; otherwise at least check syntax/tooling that is already configured.
+* If no automated verification is available, state what was checked manually and what remains unverified.
