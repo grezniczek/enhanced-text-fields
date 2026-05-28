@@ -83,13 +83,15 @@
 }
 
 .rc-text-viewer-edit-state {
-	align-items: center;
-	color: #4b5563;
+	position: relative;
 	display: inline-flex;
+	align-items: center;
+	margin-top: auto;
+	color: #4b5563;
 	height: 14px;
 	min-width: 14px;
-	position: relative;
 	width: 14px;
+	font-size: 80%;
 }
 
 .rc-text-viewer-edit-state__pencil,
@@ -178,7 +180,7 @@
 }
 
 .rc-text-viewer-md-tabs a.rc-text-viewer-md-tab:hover {
-	text-decoration: underline;
+	border-bottom: 1px solid #315b7d;
 }
 
 .rc-text-viewer-md-tabs a.rc-text-viewer-md-tab.active {
