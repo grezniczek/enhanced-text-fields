@@ -264,7 +264,9 @@
 		const nextTheme = currentTheme === THEME_DARK ? THEME_LIGHT : THEME_DARK;
 		state.config.themePreferences[controller.themeType] = nextTheme;
 		applyThemeToControllers(controller.themeType, nextTheme);
-		persistThemePreference(controller.themeType, nextTheme);
+		if (!state.config.isSurvey) {
+			persistThemePreference(controller.themeType, nextTheme);
+		}
 	}
 
 	/**
