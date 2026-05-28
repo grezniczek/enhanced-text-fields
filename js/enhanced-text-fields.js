@@ -1331,13 +1331,13 @@
 
 		const mode = determineFileMode(controller.field.viewers || [], filename);
 		const params = parseFileDownloadParams(href);
-		if (!params.fileId || !params.docIdHash) {
+		if (!params.docId || !params.docIdHash) {
 			return null;
 		}
 
 		return {
 			docIdHash: params.docIdHash,
-			fileId: params.fileId,
+			docId: params.docId,
 			filename: filename,
 			href: href,
 			mode: mode,
@@ -1355,13 +1355,13 @@
 			const url = new URL(href, global.location.href);
 			return {
 				docIdHash: url.searchParams.get('doc_id_hash') || '',
-				fileId: url.searchParams.get('id') || '',
+				docId: url.searchParams.get('id') || '',
 			};
 		}
 		catch (e) {
 			return {
 				docIdHash: getQueryParamFromString(href, 'doc_id_hash'),
-				fileId: getQueryParamFromString(href, 'id'),
+				docId: getQueryParamFromString(href, 'id'),
 			};
 		}
 	}
@@ -1415,7 +1415,7 @@
 	 * @returns {boolean}
 	 */
 	function isSameFileInfo(a, b) {
-		return !!a && !!b && a.fileId === b.fileId && a.docIdHash === b.docIdHash && a.mode === b.mode;
+		return !!a && !!b && a.docId === b.docId && a.docIdHash === b.docIdHash && a.mode === b.mode;
 	}
 
 	/**
@@ -1583,10 +1583,12 @@
 		return jsmo.ajax(AJAX_GET_FILE_CONTENT, {
 			docIdHash: info.docIdHash,
 			fieldName: controller.fieldName,
-			fileId: info.fileId,
+			docId: info.docId,
 			filename: info.filename,
 			mode: info.mode,
 		}).then(function (response) {
+			// TODO: Check response: { 'ok': true, content: '...' } or { 'ok': false, error: '...' }
+			// TODO: In case of error, display a simpleDialog with the error message.
 			if (typeof response === 'string') {
 				return response;
 			}
