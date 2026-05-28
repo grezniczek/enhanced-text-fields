@@ -1272,8 +1272,11 @@
 		controller.$viewLink = $('<a/>', {
 			href: 'javascript:;',
 			class: FILE_VIEW_LINK_CLASS + ' d-print-none',
-			text: 'View',
 		});
+		controller.$viewLink.append(
+			$('<i/>', { class: 'fa-solid fa-eye me-1', 'aria-hidden': 'true' }),
+			$('<span/>', { text: 'View' })
+		);
 		controller.$viewLink.on('click', function (ev) {
 			ev.preventDefault();
 			openFileViewer(controller);
