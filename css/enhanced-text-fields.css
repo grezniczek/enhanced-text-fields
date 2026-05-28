@@ -41,9 +41,20 @@
 }
 
 .rc-text-viewer__ace {
+	font-family: Monaco, Menlo, "Ubuntu Mono", Consolas, "Courier New", monospace !important;
+	font-size: 12px !important;
 	height: 320px;
+	letter-spacing: normal !important;
+	line-height: normal !important;
 	min-height: 160px;
 	width: 100%;
+}
+
+.rc-text-viewer__ace *,
+.rc-text-viewer__ace textarea {
+	font-family: inherit !important;
+	font-size: inherit !important;
+	letter-spacing: normal !important;
 }
 
 .rc-text-viewer-json-preview {

@@ -1541,6 +1541,8 @@
 			updatingEditor: false,
 			updatingControl: false,
 			skipNextControlRender: false,
+			editorChangeGeneration: 0,
+			suppressedEditorChangeGeneration: null,
 		});
 
 		if (field.readonly) {
@@ -1597,9 +1599,17 @@
 			});
 			controller.editor = editor;
 			state.editors[fieldName] = editor;
-			editor.session.on('change', debounce(function () {
+			const syncFromEditor = debounce(function () {
 				syncJsonFromEditor(controller);
-			}, 100));
+			}, 100);
+			editor.session.on('change', function () {
+				const changeGeneration = controller.editorChangeGeneration;
+				if (changeGeneration === controller.suppressedEditorChangeGeneration) {
+					controller.suppressedEditorChangeGeneration = null;
+					return;
+				}
+				syncFromEditor();
+			});
 			editor.on('blur', function () {
 				normalizeJsonEditor(controller);
 			});
@@ -1739,9 +1749,22 @@
 			return;
 		}
 		controller.updatingEditor = true;
-		controller.editor.setValue(formatted.text, -1);
+		setJsonEditorValue(controller, formatted.text);
 		controller.updatingEditor = false;
 		controller.editor.resize();
+	}
+
+	/**
+	 * Sets JSON editor text without treating the resulting Ace event as a user edit.
+	 *
+	 * @param {object} controller JSON controller.
+	 * @param {string} value Editor value.
+	 * @returns {void}
+	 */
+	function setJsonEditorValue(controller, value) {
+		controller.editorChangeGeneration += 1;
+		controller.suppressedEditorChangeGeneration = controller.editorChangeGeneration;
+		controller.editor.setValue(value, -1);
 	}
 
 	/**
@@ -1783,7 +1806,7 @@
 			return;
 		}
 		controller.updatingEditor = true;
-		controller.editor.setValue(formatted.text, -1);
+		setJsonEditorValue(controller, formatted.text);
 		controller.updatingEditor = false;
 		syncJsonFromEditor(controller);
 		controller.editor.resize();
