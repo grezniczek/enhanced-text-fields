@@ -39,9 +39,7 @@
 		acePromise: null,
 		aceConfigured: false,
 		editors: {},
-		markdownControllers: {},
-		jsonControllers: {},
-		aceTextControllers: {},
+		controllers: {},
 	};
 
 	/**
@@ -230,21 +228,9 @@
 	 * @returns {void}
 	 */
 	function applyThemeToControllers(type, theme) {
-		Object.keys(state.markdownControllers).forEach(function (key) {
-			const controller = state.markdownControllers[key];
-			if (controller.themeType === type) {
-				applyThemeToController(controller, theme);
-			}
-		});
-		Object.keys(state.jsonControllers).forEach(function (key) {
-			const controller = state.jsonControllers[key];
-			if (controller.themeType === type) {
-				applyThemeToController(controller, theme);
-			}
-		});
-		Object.keys(state.aceTextControllers).forEach(function (key) {
-			const controller = state.aceTextControllers[key];
-			if (controller.themeType === type) {
+		Object.keys(state.controllers).forEach(function (key) {
+			const controller = state.controllers[key];
+			if (controller.themeMode === type) {
 				applyThemeToController(controller, theme);
 			}
 		});
@@ -257,15 +243,15 @@
 	 * @returns {void}
 	 */
 	function toggleControllerTheme(controller) {
-		if (!controller || !controller.themeType) {
+		if (!controller || !controller.themeMode) {
 			return;
 		}
-		const currentTheme = getThemePreference(controller.themeType);
+		const currentTheme = getThemePreference(controller.themeMode);
 		const nextTheme = currentTheme === THEME_DARK ? THEME_LIGHT : THEME_DARK;
-		state.config.themePreferences[controller.themeType] = nextTheme;
-		applyThemeToControllers(controller.themeType, nextTheme);
+		state.config.themePreferences[controller.themeMode] = nextTheme;
+		applyThemeToControllers(controller.themeMode, nextTheme);
 		if (!state.config.isSurvey) {
-			persistThemePreference(controller.themeType, nextTheme);
+			persistThemePreference(controller.themeMode, nextTheme);
 		}
 	}
 
@@ -276,7 +262,7 @@
 	 * @returns {boolean}
 	 */
 	function isThemeToggleVisible(controller) {
-		if (!controller || !controller.themeType || !controller.isThemeableMode) {
+		if (!controller || !controller.themeMode || !controller.isThemeableMode) {
 			return false;
 		}
 		if (controller.layout !== LAYOUT_EXPANDED && controller.layout !== LAYOUT_FULLSCREEN) {
@@ -295,7 +281,7 @@
 		if (!controller || !controller.$themeButton || !controller.$themeButton.length) {
 			return;
 		}
-		const theme = getThemePreference(controller.themeType);
+		const theme = getThemePreference(controller.themeMode);
 		const title = theme === THEME_DARK ? 'Switch to light mode' : 'Switch to dark mode';
 		const iconClass = theme === THEME_DARK ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
 		controller.$themeButton.attr('title', title).attr('aria-label', title);
@@ -440,7 +426,6 @@
 		markControlledField($control);
 
 		return {
-			viewerType: options.viewerType,
 			fieldName: fieldName,
 			$control: $control,
 			$row: $(`tr[sq_id="${escapeSelector(fieldName)}"]`).first(),
@@ -459,8 +444,9 @@
 			$collapseButton: options.$collapseButton,
 			$themeButton: options.$themeButton || $(),
 			editor: null,
-			themeType: options.themeType || null,
-			currentTheme: options.themeType ? getThemePreference(options.themeType) : THEME_LIGHT,
+			enhancementMode: options.enhancementMode,
+			themeMode: options.enhancementMode || null,
+			currentTheme: options.enhancementMode ? getThemePreference(options.enhancementMode) : THEME_LIGHT,
 			rowConfig: field.rowConfig === 'full' ? 'full' : 'split',
 			canExpandToRowWidth: field.rowConfig === 'split',
 			canExpandRaw: $control.is('textarea'),
@@ -479,6 +465,411 @@
 			$expandedRow: null,
 			bodyOverflow: null,
 		};
+	}
+
+	/**
+	 * Returns a configured display label for a viewer mode.
+	 *
+	 * @param {string} mode Viewer mode key.
+	 * @returns {string}
+	 */
+	function getModeLabel(mode) {
+		const labels = (state.config && state.config.labels) || {};
+		return labels[mode] || String(mode || '').toUpperCase();
+	}
+
+	/**
+	 * Returns an initial viewer height from a mode config.
+	 *
+	 * @param {object} modeConfig Field mode configuration.
+	 * @returns {number|null}
+	 */
+	function getInitialViewerHeight(modeConfig) {
+		return Number.isInteger(modeConfig.height) && modeConfig.height > 0
+			? Math.max(modeConfig.height, MIN_MARKDOWN_HEIGHT)
+			: null;
+	}
+
+	/**
+	 * Builds a shared resize handle.
+	 *
+	 * @returns {jQuery}
+	 */
+	function createResizeHandle() {
+		return $('<div/>', {
+			class: 'rc-text-viewer-md-resize-handle',
+			role: 'separator',
+			'aria-orientation': 'horizontal',
+			title: 'Drag to resize',
+		});
+	}
+
+	/**
+	 * Builds shared toolbar elements and action buttons.
+	 *
+	 * @param {string} fieldName REDCap field name.
+	 * @param {string} extraClass Extra toolbar class.
+	 * @param {boolean} canExpandToRowWidth Whether row expansion is available.
+	 * @returns {object}
+	 */
+	function createToolbarParts(fieldName, extraClass, canExpandToRowWidth) {
+		const $toolbar = $('<div/>', {
+			class: ['rc-text-viewer-md-toolbar', extraClass, 'd-print-none'].filter(Boolean).join(' '),
+			'data-rc-text-viewer-field': fieldName,
+		});
+		const $tabs = $('<span/>', { class: 'rc-text-viewer-md-tabs' });
+		const $actions = $('<span/>', { class: 'rc-text-viewer-md-actions' });
+		const $expandButton = createIconButton('expand', 'fa-solid fa-arrows-left-right', 'Expand to row width');
+		const $fullscreenButton = createIconButton('fullscreen', 'fa-solid fa-maximize', 'Fullscreen');
+		const $collapseButton = createIconButton('collapse', 'fa-solid fa-down-left-and-up-right-to-center', 'Collapse');
+		const $themeButton = createIconButton('toggle-theme', 'fa-solid fa-moon', 'Switch to dark mode');
+		if (!canExpandToRowWidth) {
+			$expandButton.addClass('rc-text-viewer-md-action--unavailable');
+		}
+		$actions.append($themeButton, $expandButton, $fullscreenButton, $collapseButton);
+		$toolbar.append($tabs, $actions);
+		return {
+			$toolbar: $toolbar,
+			$tabs: $tabs,
+			$actions: $actions,
+			$expandButton: $expandButton,
+			$fullscreenButton: $fullscreenButton,
+			$collapseButton: $collapseButton,
+			$themeButton: $themeButton,
+		};
+	}
+
+	/**
+	 * Builds a mode tab.
+	 *
+	 * @param {string} modeAttribute Data attribute used by the controller.
+	 * @param {string} mode Mode value.
+	 * @param {string} label Visible label.
+	 * @returns {jQuery}
+	 */
+	function createModeTab(modeAttribute, mode, label) {
+		return $('<a/>', {
+			href: 'javascript:;',
+			class: 'rc-text-viewer-md-tab',
+			[modeAttribute]: mode,
+			text: label,
+		});
+	}
+
+	/**
+	 * Appends mode tabs with separators.
+	 *
+	 * @param {jQuery} $tabs Toolbar tabs container.
+	 * @param {jQuery[]} tabItems Tabs and non-tab inline controls.
+	 * @returns {void}
+	 */
+	function appendSeparatedTabs($tabs, tabItems) {
+		tabItems.forEach(function ($item, index) {
+			if (index > 0) {
+				$tabs.append($('<span/>', { class: 'rc-text-viewer-md-tab-separator', text: '|' }));
+			}
+			$tabs.append($item);
+		});
+	}
+
+	/**
+	 * Builds a raw field wrapper panel.
+	 *
+	 * @param {string} fieldName REDCap field name.
+	 * @returns {jQuery}
+	 */
+	function createRawPanel(fieldName) {
+		return $('<div/>', {
+			class: 'rc-text-viewer-raw-panel',
+			'data-rc-text-viewer-field': fieldName,
+		});
+	}
+
+	/**
+	 * Wires shared toolbar click behavior.
+	 *
+	 * @param {object} controller Text viewer controller.
+	 * @param {string} modeSelector Selector for mode tabs.
+	 * @param {Function} setMode Mode setter.
+	 * @returns {void}
+	 */
+	function bindTextViewerToolbar(controller, modeSelector, setMode) {
+		controller.$toolbar.on('click', modeSelector, function (ev) {
+			ev.preventDefault();
+			const mode = $(this).attr(controller.modeAttribute);
+			if (mode !== controller.mode) {
+				setMode(controller, mode);
+			}
+		});
+		controller.$toolbar.on('click', '[data-rc-text-viewer-action]', function (ev) {
+			ev.preventDefault();
+			handleTextViewerAction(controller, $(this).attr('data-rc-text-viewer-action'));
+		});
+	}
+
+	/**
+	 * Mounts the shared toolbar, raw panel, and Ace-backed viewer panel.
+	 *
+	 * @param {object} controller Text viewer controller.
+	 * @returns {void}
+	 */
+	function mountAceTextViewer(controller) {
+		controller.$viewer.append(controller.$editor, controller.$resizeHandle);
+		if (controller.canExpandRaw) {
+			controller.$control.before(controller.$rawPanel);
+			controller.$rawPanel.append(controller.$control, controller.$rawResizeHandle);
+			controller.$rawPanel.before(controller.$toolbar);
+			controller.$rawPanel.after(controller.$viewer);
+			return;
+		}
+		controller.$control.before(controller.$toolbar);
+		controller.$control.after(controller.$viewer);
+	}
+
+	/**
+	 * Mounts the Markdown raw, editor, and preview panels.
+	 *
+	 * @param {object} controller Markdown controller.
+	 * @returns {void}
+	 */
+	function mountMarkdownViewer(controller) {
+		controller.$viewerScroll.append(controller.$viewerContent);
+		controller.$viewer.append(controller.$viewerScroll, controller.$resizeHandle);
+		controller.$editorViewer.append(controller.$editor, controller.$editorResizeHandle);
+		controller.$control.before(controller.$rawPanel);
+		controller.$rawPanel.append(controller.$control, controller.$rawResizeHandle);
+		controller.$rawPanel.before(controller.$toolbar);
+		controller.$rawPanel.after(controller.$viewer);
+		controller.$viewer.after(controller.$editorViewer);
+	}
+
+	/**
+	 * Initializes the shared Ace lifecycle for JSON and generic text controllers.
+	 *
+	 * @param {object} controller Text viewer controller.
+	 * @param {string} editorId Ace editor element id.
+	 * @param {object} field Field configuration.
+	 * @param {object} options Lifecycle callbacks and storage keys.
+	 * @returns {void}
+	 */
+	function initEnhancedEditor(controller, editorId, field, spec) {
+		if (spec.mode === VIEW_MARKDOWN) {
+			ensureAce().then(function () {
+				const editor = createAceEditor(editorId, {
+					mode: VIEW_MARKDOWN,
+					theme: getPreferredAceTheme(controller.themeMode),
+					readOnly: !!field.readonly,
+					useWorker: false,
+				});
+				controller.editor = editor;
+				controller.currentTheme = getThemePreference(controller.themeMode);
+				state.editors[spec.editorKey] = editor;
+				editor.setValue(controller.$control.val() || '', -1);
+				editor.session.on('change', debounce(function () {
+					if (editor.getReadOnly()) {
+						return;
+					}
+					controller.$control.val(editor.getValue()).trigger('change');
+					renderMarkdown(controller);
+				}, 100));
+				controller.$control.on('input change keyup', debounce(function () {
+					if (editor.getValue() !== (controller.$control.val() || '')) {
+						editor.setValue(controller.$control.val() || '', -1);
+					}
+				}, 100));
+				editor.resize();
+			}).catch(function (e) {
+				LOGGER.warn('Ace failed to load for Markdown editor', e);
+			});
+			return;
+		}
+
+		ensureAce().then(function () {
+			const editor = createAceEditor(editorId, {
+				mode: spec.editorMode,
+				theme: getPreferredAceTheme(controller.themeMode),
+				readOnly: !!field.readonly,
+				useWorker: false,
+				indent: controller.indent,
+			});
+			controller.editor = editor;
+			controller.currentTheme = getThemePreference(controller.themeMode);
+			state.editors[spec.editorKey] = editor;
+			const syncFromEditor = debounce(function () {
+				spec.syncFromEditor(controller);
+			}, 100);
+			editor.session.on('change', function () {
+				const changeGeneration = controller.editorChangeGeneration;
+				if (changeGeneration === controller.suppressedEditorChangeGeneration) {
+					controller.suppressedEditorChangeGeneration = null;
+					return;
+				}
+				syncFromEditor();
+			});
+			editor.on('blur', function () {
+				spec.normalizeEditor(controller);
+			});
+			spec.renderFromControl(controller);
+			syncTextViewerNormalSize(controller);
+			resizeTextViewerEditor(controller);
+		}).catch(function (e) {
+			spec.renderFallback(controller, e);
+		});
+	}
+
+	/**
+	 * Renders a JSON fallback when Ace cannot load.
+	 *
+	 * @param {object} controller JSON controller.
+	 * @param {Error} error Load error.
+	 * @returns {void}
+	 */
+	function renderJsonFallback(controller, error) {
+		const formatted = formatJson(controller.$control.val() || '', controller.displayFormat, controller.indent);
+		controller.$viewer.html($('<pre/>', { class: 'rc-text-viewer__fallback' }).text(formatted.text));
+		setJsonStatus(controller, formatted);
+		LOGGER.warn('Ace failed to load', error);
+	}
+
+	/**
+	 * Renders a generic text fallback when Ace cannot load.
+	 *
+	 * @param {object} controller Ace text controller.
+	 * @param {Error} error Load error.
+	 * @returns {void}
+	 */
+	function renderAceTextFallback(controller, error) {
+		const formatted = formatAceText(controller.$control.val() || '', controller.aceMode, controller.displayFormat, controller.indent);
+		controller.$viewer.html($('<pre/>', { class: 'rc-text-viewer__fallback' }).text(formatted.text));
+		setAceTextStatus(controller, formatted);
+		LOGGER.warn('Ace failed to load for ' + controller.aceMode, error);
+	}
+
+	/**
+	 * Sets the visible mode for an Ace-backed raw/editor controller.
+	 *
+	 * @param {object} controller Text viewer controller.
+	 * @param {string} mode Desired mode.
+	 * @param {object} options Mode callbacks and editor settings.
+	 * @returns {void}
+	 */
+	function setAceBackedMode(controller, mode, options) {
+		if (controller[options.editorOnlyProperty] || mode === options.editorMode) {
+			mode = options.editorMode;
+		}
+		else {
+			mode = VIEW_RAW;
+		}
+
+		const previousMode = controller.mode;
+		const previousLayout = controller.layout;
+		if (previousMode === VIEW_RAW && mode !== VIEW_RAW) {
+			options.renderFromControl(controller);
+		}
+		if (previousMode !== mode && previousLayout !== LAYOUT_NORMAL) {
+			rememberTextViewerHeight(controller);
+			restoreTextViewerLayout(controller);
+		}
+		controller.mode = mode;
+		if (mode === VIEW_RAW) {
+			options.normalizeEditor(controller);
+			syncTextViewerNormalSize(controller, true);
+			showAceBackedRawMode(controller);
+		}
+		else {
+			syncTextViewerNormalSize(controller, true);
+			showAceBackedEditorMode(controller, options.resizeEditor);
+		}
+		options.updateToolbar(controller);
+		if (previousMode !== mode && previousLayout === LAYOUT_EXPANDED) {
+			expandTextViewer(controller);
+		}
+		if (previousMode !== mode && previousLayout === LAYOUT_FULLSCREEN) {
+			fullscreenTextViewer(controller);
+		}
+	}
+
+	/**
+	 * Shows the raw control for an Ace-backed controller.
+	 *
+	 * @param {object} controller Text viewer controller.
+	 * @returns {void}
+	 */
+	function showAceBackedRawMode(controller) {
+		controller.$control.show();
+		controller.$rawPanel.css('display', controller.canExpandRaw ? 'flex' : 'none');
+		controller.$expandLink.hide();
+		controller.$viewer.css('display', 'none');
+	}
+
+	/**
+	 * Shows the Ace editor panel for an Ace-backed controller.
+	 *
+	 * @param {object} controller Text viewer controller.
+	 * @param {Function} resizeEditor Editor resize callback.
+	 * @returns {void}
+	 */
+	function showAceBackedEditorMode(controller, resizeEditor) {
+		controller.$control.hide();
+		controller.$rawPanel.css('display', 'none');
+		controller.$expandLink.hide();
+		controller.$viewer.css('display', 'flex');
+		resizeEditor(controller);
+	}
+
+	/**
+	 * Returns the active panel for an Ace-backed controller.
+	 *
+	 * @param {object} controller Text viewer controller.
+	 * @returns {jQuery}
+	 */
+	function getAceBackedActivePanel(controller) {
+		return controller.mode === VIEW_RAW && controller.canExpandRaw ? controller.$rawPanel : controller.$viewer;
+	}
+
+	/**
+	 * Restores the visible panel for an Ace-backed controller.
+	 *
+	 * @param {object} controller Text viewer controller.
+	 * @param {Function} resizeEditor Editor resize callback.
+	 * @returns {void}
+	 */
+	function restoreAceBackedVisibleMode(controller, resizeEditor) {
+		if (controller.mode === VIEW_RAW) {
+			showAceBackedRawMode(controller);
+			return;
+		}
+		showAceBackedEditorMode(controller, resizeEditor);
+	}
+
+	/**
+	 * Calculates content height for an Ace-backed controller.
+	 *
+	 * @param {object} controller Text viewer controller.
+	 * @returns {number}
+	 */
+	function getAceBackedContentHeight(controller) {
+		if (controller.mode === VIEW_RAW && controller.canExpandRaw) {
+			const control = controller.$control[0];
+			return control ? control.scrollHeight + controller.$rawResizeHandle.outerHeight() : MIN_MARKDOWN_HEIGHT;
+		}
+		if (controller.editor) {
+			const lineHeight = controller.editor.renderer.lineHeight || 16;
+			return (controller.editor.session.getScreenLength() * lineHeight) + 24;
+		}
+		return MIN_MARKDOWN_HEIGHT;
+	}
+
+	/**
+	 * Resizes an Ace editor with its native resize method.
+	 *
+	 * @param {object} controller Text viewer controller.
+	 * @returns {void}
+	 */
+	function resizeAceEditor(controller) {
+		if (controller.editor) {
+			controller.editor.resize();
+		}
 	}
 
 	/**
@@ -529,179 +920,328 @@
 	}
 
 	/**
-	 * Builds a Markdown controller for one textarea.
+	 * Builds a controller specification for one enhancement mode.
 	 *
-	 * @param {jQuery} $control Textarea control.
+	 * @param {jQuery} $control Field input or textarea.
 	 * @param {object} field Field configuration.
+	 * @param {string} mode Enhancement mode.
 	 * @returns {object}
 	 */
-	function createMarkdownController($control, field) {
+	function getEnhancedTextSpec($control, field, mode) {
 		const fieldName = field.name;
-		const markdownConfig = field.markdown || {};
-		const mdOnly = !!markdownConfig.editorOnly;
-		const initialHeight = Number.isInteger(markdownConfig.height) && markdownConfig.height > 0
-			? Math.max(markdownConfig.height, MIN_MARKDOWN_HEIGHT)
-			: null;
-		const canExpandToRowWidth = field.rowConfig === 'split';
-		const $toolbar = $('<div/>', {
-			class: 'rc-text-viewer-md-toolbar d-print-none',
-			'data-rc-text-viewer-field': fieldName,
-		});
-		const $tabs = $('<span/>', { class: 'rc-text-viewer-md-tabs' });
-		const $editability = createEditStateIndicator(!!field.readonly);
-		const $rawTab = $('<a/>', {
-			href: 'javascript:;',
-			class: 'rc-text-viewer-md-tab',
-			'data-rc-md-mode': VIEW_RAW,
-			text: 'Raw',
-		});
-		const $markdownTab = $('<a/>', {
-			href: 'javascript:;',
-			class: 'rc-text-viewer-md-tab',
-			'data-rc-md-mode': VIEW_MARKDOWN,
-			text: 'Markdown',
-		});
-		const $htmlTab = $('<a/>', {
-			href: 'javascript:;',
-			class: 'rc-text-viewer-md-tab',
-			'data-rc-md-mode': VIEW_HTML,
-			text: 'HTML',
-		});
-		const $actions = $('<span/>', { class: 'rc-text-viewer-md-actions' });
-		const $expandButton = createIconButton('expand', 'fa-solid fa-arrows-left-right', 'Expand to row width');
-		const $fullscreenButton = createIconButton('fullscreen', 'fa-solid fa-maximize', 'Fullscreen');
-		const $collapseButton = createIconButton('collapse', 'fa-solid fa-down-left-and-up-right-to-center', 'Collapse');
-		const $themeButton = createIconButton('toggle-theme', 'fa-solid fa-moon', 'Switch to dark mode');
-		if (!canExpandToRowWidth) {
-			$expandButton.addClass('rc-text-viewer-md-action--unavailable');
+		if (mode === VIEW_MARKDOWN) {
+			const modeConfig = field.markdown || {};
+			const editorOnly = !!modeConfig.editorOnly;
+			return {
+				mode: VIEW_MARKDOWN,
+				modeConfig: modeConfig,
+				editorOnly: editorOnly,
+				initialMode: editorOnly ? VIEW_MARKDOWN : getMarkdownInitialMode($control, modeConfig),
+				editorMode: VIEW_MARKDOWN,
+				editorId: `rc-text-viewer-md-ace-${fieldName}`,
+				toolbarClass: '',
+				viewerClass: 'rc-text-viewer-md-preview',
+				modeAttribute: 'data-rc-md-mode',
+				modeSelector: '[data-rc-md-mode]',
+				layoutAttribute: 'data-rc-md-layout',
+				defaultMode: VIEW_HTML,
+				tabs: editorOnly
+					? [VIEW_MARKDOWN, VIEW_HTML]
+					: [VIEW_RAW, VIEW_MARKDOWN, VIEW_HTML],
+				stateKey: fieldName,
+				editorKey: `${fieldName}-markdown`,
+				buildController: extendMarkdownController,
+				mount: mountMarkdownViewer,
+				setMode: setMarkdownMode,
+				afterCreate: initMarkdownWindowResize,
+			};
 		}
+		if (mode === VIEW_JSON) {
+			const modeConfig = field.json || {};
+			const editorOnly = !!modeConfig.editorOnly;
+			return {
+				mode: VIEW_JSON,
+				modeConfig: modeConfig,
+				editorOnly: editorOnly,
+				initialMode: editorOnly || modeConfig.initialMode === VIEW_JSON ? VIEW_JSON : VIEW_RAW,
+				editorMode: VIEW_JSON,
+				editorId: `rc-text-viewer-ace-${fieldName}`,
+				toolbarClass: 'rc-text-viewer-json-toolbar',
+				viewerClass: 'rc-text-viewer-json-preview',
+				modeAttribute: 'data-rc-json-mode',
+				modeSelector: '[data-rc-json-mode]',
+				layoutAttribute: 'data-rc-json-layout',
+				defaultMode: VIEW_JSON,
+				tabs: editorOnly ? [VIEW_JSON] : [VIEW_RAW, VIEW_JSON],
+				stateKey: fieldName,
+				editorKey: fieldName,
+				status: true,
+				buildController: extendJsonController,
+				mount: mountAceTextViewer,
+				setMode: setJsonMode,
+				syncFromEditor: syncJsonFromEditor,
+				normalizeEditor: normalizeJsonEditor,
+				renderFromControl: renderJsonFromControl,
+				renderFallback: renderJsonFallback,
+			};
+		}
+		const modeConfig = field[mode] || {};
+		const editorOnly = !!modeConfig.editorOnly;
+		return {
+			mode: mode,
+			modeConfig: modeConfig,
+			editorOnly: editorOnly,
+			initialMode: editorOnly || modeConfig.initialMode === mode ? mode : VIEW_RAW,
+			editorMode: mode,
+			editorId: `rc-text-viewer-${mode}-ace-${fieldName}`,
+			toolbarClass: 'rc-text-viewer-code-toolbar',
+			viewerClass: 'rc-text-viewer-json-preview rc-text-viewer-code-preview',
+			modeAttribute: 'data-rc-code-mode',
+			modeSelector: '[data-rc-code-mode]',
+			layoutAttribute: 'data-rc-code-layout',
+			defaultMode: mode,
+			tabs: editorOnly ? [mode] : [VIEW_RAW, mode],
+			stateKey: `${fieldName}-${mode}`,
+			editorKey: `${fieldName}-${mode}`,
+			status: true,
+			buildController: extendAceTextController,
+			mount: mountAceTextViewer,
+			setMode: setAceTextMode,
+			syncFromEditor: syncAceTextFromEditor,
+			normalizeEditor: normalizeAceTextEditor,
+			renderFromControl: renderAceTextFromControl,
+			renderFallback: renderAceTextFallback,
+		};
+	}
+
+	/**
+	 * Builds one enhanced text controller from a mode specification.
+	 *
+	 * @param {jQuery} $control Field input or textarea.
+	 * @param {object} field Field configuration.
+	 * @param {string} mode Enhancement mode.
+	 * @returns {object}
+	 */
+	function createEnhancedTextController($control, field, mode) {
+		const fieldName = field.name;
+		const spec = getEnhancedTextSpec($control, field, mode);
+		const toolbarParts = createToolbarParts(fieldName, spec.toolbarClass, field.rowConfig === 'split');
+		const $editability = createEditStateIndicator(!!field.readonly);
+		const $status = spec.status ? $('<span/>', { class: 'rc-text-viewer-json-status', 'aria-live': 'polite' }) : $();
 		const $viewer = $('<div/>', {
-			class: 'rc-text-viewer-md-preview',
+			class: spec.viewerClass,
 			'data-rc-text-viewer-field': fieldName,
-			tabindex: '0',
+			tabindex: mode === VIEW_MARKDOWN ? '0' : null,
 		});
-		const $viewerScroll = $('<div/>', { class: 'rc-text-viewer-md-preview-scroll' });
-		const $viewerContent = $('<div/>', { class: 'markdown-body rc-text-viewer-md-preview-content' });
-		const editorId = `rc-text-viewer-md-ace-${fieldName}`;
-		const $editorViewer = $('<div/>', {
-			class: 'rc-text-viewer-md-editor',
-			'data-rc-text-viewer-field': fieldName,
-		});
-		const $editor = $('<div/>', { id: editorId, class: 'rc-text-viewer__ace' });
-		const $resizeHandle = $('<div/>', {
-			class: 'rc-text-viewer-md-resize-handle',
-			role: 'separator',
-			'aria-orientation': 'horizontal',
-			title: 'Drag to resize',
-		});
-		const $editorResizeHandle = $('<div/>', {
-			class: 'rc-text-viewer-md-resize-handle',
-			role: 'separator',
-			'aria-orientation': 'horizontal',
-			title: 'Drag to resize',
-		});
-		const $rawPanel = $('<div/>', {
-			class: 'rc-text-viewer-raw-panel',
-			'data-rc-text-viewer-field': fieldName,
-		});
-		const $rawResizeHandle = $('<div/>', {
-			class: 'rc-text-viewer-md-resize-handle',
-			role: 'separator',
-			'aria-orientation': 'horizontal',
-			title: 'Drag to resize',
-		});
+		const $editor = $('<div/>', { id: spec.editorId, class: 'rc-text-viewer__ace' });
+		const $rawPanel = createRawPanel(fieldName);
 		const controller = createTextViewerController({
-			viewerType: 'markdown',
-			themeType: 'markdown',
+			enhancementMode: mode,
 			field: field,
 			$control: $control,
-			$toolbar: $toolbar,
+			$toolbar: toolbarParts.$toolbar,
 			$viewer: $viewer,
-			$editorViewer: $editorViewer,
+			$editorViewer: mode === VIEW_MARKDOWN ? $('<div/>', {
+				class: 'rc-text-viewer-md-editor',
+				'data-rc-text-viewer-field': fieldName,
+			}) : $(),
 			$editor: $editor,
 			$rawPanel: $rawPanel,
-			$resizeHandle: $resizeHandle,
-			$editorResizeHandle: $editorResizeHandle,
-			$rawResizeHandle: $rawResizeHandle,
-			$actions: $actions,
-			$expandButton: $expandButton,
-			$fullscreenButton: $fullscreenButton,
-			$collapseButton: $collapseButton,
-			$themeButton: $themeButton,
-			initialHeight: initialHeight,
+			$resizeHandle: createResizeHandle(),
+			$editorResizeHandle: mode === VIEW_MARKDOWN ? createResizeHandle() : $(),
+			$rawResizeHandle: createResizeHandle(),
+			$actions: toolbarParts.$actions,
+			$expandButton: toolbarParts.$expandButton,
+			$fullscreenButton: toolbarParts.$fullscreenButton,
+			$collapseButton: toolbarParts.$collapseButton,
+			$themeButton: toolbarParts.$themeButton,
+			initialHeight: getInitialViewerHeight(spec.modeConfig),
 		});
-		const initialMode = getMarkdownInitialMode($control, markdownConfig);
+
+		spec.buildController(controller, spec, $status);
+		if (field.readonly) {
+			applyReadonlyState($control, controller.$row);
+		}
+
+		appendControllerTabs(toolbarParts.$tabs, $editability, spec, $status);
+		spec.mount(controller);
+		bindTextViewerToolbar(controller, spec.modeSelector, spec.setMode);
+		initTextViewerResizeHandles(controller);
+		initEnhancedEditor(controller, spec.editorId, field, spec);
+		if (spec.afterCreate) {
+			spec.afterCreate(controller);
+		}
+
+		spec.setMode(controller, controller.mode);
+		state.controllers[spec.stateKey] = controller;
+		LOGGER.log('Controller created', controller);
+		return controller;
+	}
+
+	/**
+	 * Returns whether a configured enhancement mode is supported.
+	 *
+	 * @param {string} mode Enhancement mode.
+	 * @returns {boolean}
+	 */
+	function isSupportedEnhancementMode(mode) {
+		return mode === VIEW_MARKDOWN || mode === VIEW_JSON || !!ACE_TEXT_MODES[mode];
+	}
+
+	/**
+	 * Attaches one configured enhancement to a field control.
+	 *
+	 * @param {jQuery} $control Field input or textarea.
+	 * @param {object} field Field configuration.
+	 * @param {string} mode Enhancement mode.
+	 * @returns {void}
+	 */
+	function attachEnhancedTextViewer($control, field, mode) {
+		if (!isSupportedEnhancementMode(mode)) {
+			LOGGER.warn('Unsupported enhancement skipped', mode, field.name);
+			return;
+		}
+		if (mode === VIEW_MARKDOWN && !$control.is('textarea')) {
+			LOGGER.warn('Markdown viewer skipped for non-textarea field', field.name);
+			return;
+		}
+		createEnhancedTextController($control, field, mode);
+	}
+
+	/**
+	 * Appends mode tabs for a controller.
+	 *
+	 * @param {jQuery} $tabs Toolbar tabs container.
+	 * @param {jQuery} $editability Editable/readonly indicator.
+	 * @param {object} spec Controller specification.
+	 * @param {jQuery} $status Optional status indicator.
+	 * @returns {void}
+	 */
+	function appendControllerTabs($tabs, $editability, spec, $status) {
+		const tabItems = spec.tabs.map(function (tabMode) {
+			return createModeTab(spec.modeAttribute, tabMode, getModeLabel(tabMode));
+		});
+		$tabs.append($editability);
+		if (spec.editorOnly && tabItems.length === 1) {
+			$tabs.append(tabItems[0]);
+		}
+		else {
+			appendSeparatedTabs($tabs, tabItems);
+		}
+		if ($status && $status.length) {
+			$tabs.append($status);
+		}
+	}
+
+	/**
+	 * Extends a base controller with Markdown behavior.
+	 *
+	 * @param {object} controller Text viewer controller.
+	 * @param {object} spec Controller specification.
+	 * @returns {void}
+	 */
+	function extendMarkdownController(controller, spec) {
+		const $viewerScroll = $('<div/>', { class: 'rc-text-viewer-md-preview-scroll' });
+		const $viewerContent = $('<div/>', { class: 'markdown-body rc-text-viewer-md-preview-content' });
 		$.extend(controller, {
 			$viewerScroll: $viewerScroll,
 			$viewerContent: $viewerContent,
-			mdOnly: mdOnly,
-			mode: initialMode,
+			mdOnly: spec.editorOnly,
+			mode: spec.initialMode,
 			getActivePanel: function () { return getMarkdownActivePanel(controller); },
 			getPanelSet: function () { return controller.$viewer.add(controller.$editorViewer).add(controller.$rawPanel); },
 			getContentHeight: function () { return getMarkdownContentHeight(controller); },
 			setHeight: function (height, userResize) { setTextViewerHeight(controller, height, userResize !== false); },
 			syncSize: function (captureHeight) { syncTextViewerNormalSize(controller, captureHeight); },
 			restoreVisibleMode: function () { restoreMarkdownVisibleMode(controller); },
-			setMode: function (mode) { setMarkdownMode(controller, mode); },
+			setMode: function (nextMode) { setMarkdownMode(controller, nextMode); },
 			updateToolbar: function () { updateMarkdownToolbar(controller); },
 			isPanelMode: function () { return controller.mode === VIEW_MARKDOWN || controller.mode === VIEW_HTML || (controller.mode === VIEW_RAW && controller.canExpandRaw); },
 			isThemeableMode: function () { return controller.mode === VIEW_MARKDOWN; },
-			modeAttribute: 'data-rc-md-mode',
-			layoutAttribute: 'data-rc-md-layout',
-			defaultMode: VIEW_HTML,
+			modeAttribute: spec.modeAttribute,
+			layoutAttribute: spec.layoutAttribute,
+			defaultMode: spec.defaultMode,
 		});
+	}
 
-		if (field.readonly) {
-			applyReadonlyState($control, controller.$row);
-		}
-
-		if (mdOnly) {
-			controller.mode = VIEW_MARKDOWN;
-			$tabs.append($editability, $markdownTab, $('<span/>', { class: 'rc-text-viewer-md-tab-separator', text: '|' }), $htmlTab);
-		}
-		else {
-			$tabs.append(
-				$editability,
-				$rawTab,
-				$('<span/>', { class: 'rc-text-viewer-md-tab-separator', text: '|' }),
-				$markdownTab,
-				$('<span/>', { class: 'rc-text-viewer-md-tab-separator', text: '|' }),
-				$htmlTab
-			);
-		}
-		$actions.append($themeButton, $expandButton, $fullscreenButton, $collapseButton);
-		$toolbar.append($tabs, $actions);
-		$viewerScroll.append($viewerContent);
-		$viewer.append($viewerScroll, $resizeHandle);
-		$editorViewer.append($editor, $editorResizeHandle);
-		$control.before($rawPanel);
-		$rawPanel.append($control, $rawResizeHandle);
-		$rawPanel.before($toolbar);
-		$rawPanel.after($viewer);
-		$viewer.after($editorViewer);
-
-		$toolbar.on('click', '[data-rc-md-mode]', function (ev) {
-			ev.preventDefault();
-			const mode = $(this).attr('data-rc-md-mode');
-			if (mode !== controller.mode) {
-				setMarkdownMode(controller, mode);
-			}
+	/**
+	 * Extends a base controller with JSON behavior.
+	 *
+	 * @param {object} controller Text viewer controller.
+	 * @param {object} spec Controller specification.
+	 * @param {jQuery} $status Validation status indicator.
+	 * @returns {void}
+	 */
+	function extendJsonController(controller, spec, $status) {
+		const storageFormat = controller.$control.is('textarea') && spec.modeConfig.format !== 'compact' ? 'pretty' : 'compact';
+		$.extend(controller, {
+			$status: $status,
+			jsonOnly: spec.editorOnly,
+			displayFormat: 'pretty',
+			storageFormat: storageFormat,
+			indent: spec.modeConfig.indent || 2,
+			mode: spec.initialMode,
+			getActivePanel: function () { return getJsonActivePanel(controller); },
+			getPanelSet: function () { return controller.$viewer.add(controller.$rawPanel); },
+			getContentHeight: function () { return getJsonContentHeight(controller); },
+			setHeight: function (height, userResize) { setTextViewerHeight(controller, height, userResize !== false); },
+			syncSize: function (captureHeight) { syncTextViewerNormalSize(controller, captureHeight); },
+			restoreVisibleMode: function () { restoreJsonVisibleMode(controller); },
+			setMode: function (nextMode) { setJsonMode(controller, nextMode); },
+			updateToolbar: function () { updateJsonToolbar(controller); },
+			isPanelMode: function () { return controller.mode === VIEW_JSON || (controller.mode === VIEW_RAW && controller.canExpandRaw); },
+			isThemeableMode: function () { return controller.mode === VIEW_JSON; },
+			modeAttribute: spec.modeAttribute,
+			layoutAttribute: spec.layoutAttribute,
+			defaultMode: spec.defaultMode,
+			updatingEditor: false,
+			updatingControl: false,
+			skipNextControlRender: false,
+			editorChangeGeneration: 0,
+			suppressedEditorChangeGeneration: null,
 		});
-		$toolbar.on('click', '[data-rc-text-viewer-action]', function (ev) {
-			ev.preventDefault();
-			handleTextViewerAction(controller, $(this).attr('data-rc-text-viewer-action'));
-		});
-		initTextViewerResizeHandles(controller);
-		initMarkdownEditor(controller, editorId, field);
-		$(global).on('resize', debounce(function () {
-			if ((controller.mode === VIEW_MARKDOWN || controller.mode === VIEW_HTML) && controller.layout === LAYOUT_NORMAL) {
-				syncTextViewerNormalSize(controller, false);
-			}
-		}, 100));
+	}
 
-		setMarkdownMode(controller, controller.mode);
-		LOGGER.log('Controller created', controller);
-		return controller;
+	/**
+	 * Extends a base controller with generic Ace text behavior.
+	 *
+	 * @param {object} controller Text viewer controller.
+	 * @param {object} spec Controller specification.
+	 * @param {jQuery} $status Validation status indicator.
+	 * @returns {void}
+	 */
+	function extendAceTextController(controller, spec, $status) {
+		const modeMeta = ACE_TEXT_MODES[spec.mode] || { normalizes: false };
+		const storageFormat = controller.$control.is('textarea') && spec.modeConfig.format !== 'compact' ? 'pretty' : 'compact';
+		$.extend(controller, {
+			$status: $status,
+			aceMode: spec.mode,
+			modeLabel: spec.modeConfig.label || getModeLabel(spec.mode),
+			editorOnly: spec.editorOnly,
+			normalizes: !!modeMeta.normalizes,
+			displayFormat: 'pretty',
+			storageFormat: storageFormat,
+			indent: spec.modeConfig.indent || 2,
+			mode: spec.initialMode,
+			getActivePanel: function () { return getAceTextActivePanel(controller); },
+			getPanelSet: function () { return controller.$viewer.add(controller.$rawPanel); },
+			getContentHeight: function () { return getAceTextContentHeight(controller); },
+			setHeight: function (height, userResize) { setTextViewerHeight(controller, height, userResize !== false); },
+			syncSize: function (captureHeight) { syncTextViewerNormalSize(controller, captureHeight); },
+			restoreVisibleMode: function () { restoreAceTextVisibleMode(controller); },
+			setMode: function (nextMode) { setAceTextMode(controller, nextMode); },
+			updateToolbar: function () { updateAceTextToolbar(controller); },
+			isPanelMode: function () { return controller.mode === controller.aceMode || (controller.mode === VIEW_RAW && controller.canExpandRaw); },
+			isThemeableMode: function () { return controller.mode === controller.aceMode; },
+			modeAttribute: spec.modeAttribute,
+			layoutAttribute: spec.layoutAttribute,
+			defaultMode: spec.defaultMode,
+			updatingEditor: false,
+			updatingControl: false,
+			skipNextControlRender: false,
+			editorChangeGeneration: 0,
+			suppressedEditorChangeGeneration: null,
+		});
 	}
 
 	/**
@@ -898,41 +1438,17 @@
 	}
 
 	/**
-	 * Initializes the Ace-backed Markdown source editor.
+	 * Keeps Markdown panels sized to their REDCap row while in normal layout.
 	 *
 	 * @param {object} controller Markdown controller.
-	 * @param {string} editorId Ace editor element id.
-	 * @param {object} field Field configuration.
 	 * @returns {void}
 	 */
-	function initMarkdownEditor(controller, editorId, field) {
-		ensureAce().then(function () {
-			const editor = createAceEditor(editorId, {
-				mode: VIEW_MARKDOWN,
-				theme: getPreferredAceTheme(controller.themeType),
-				readOnly: !!field.readonly,
-				useWorker: false,
-			});
-			controller.editor = editor;
-			controller.currentTheme = getThemePreference(controller.themeType);
-			state.editors[`${controller.fieldName}-markdown`] = editor;
-			editor.setValue(controller.$control.val() || '', -1);
-			editor.session.on('change', debounce(function () {
-				if (editor.getReadOnly()) {
-					return;
-				}
-				controller.$control.val(editor.getValue()).trigger('change');
-				renderMarkdown(controller);
-			}, 100));
-			controller.$control.on('input change keyup', debounce(function () {
-				if (editor.getValue() !== (controller.$control.val() || '')) {
-					editor.setValue(controller.$control.val() || '', -1);
-				}
-			}, 100));
-			editor.resize();
-		}).catch(function (e) {
-			LOGGER.warn('Ace failed to load for Markdown editor', e);
-		});
+	function initMarkdownWindowResize(controller) {
+		$(global).on('resize', debounce(function () {
+			if ((controller.mode === VIEW_MARKDOWN || controller.mode === VIEW_HTML) && controller.layout === LAYOUT_NORMAL) {
+				syncTextViewerNormalSize(controller, false);
+			}
+		}, 100));
 	}
 
 	/**
@@ -1441,21 +1957,6 @@
 	}
 
 	/**
-	 * Renders a Markdown viewer and wires it to field changes.
-	 *
-	 * @param {jQuery} $control Field textarea.
-	 * @param {object} field Field configuration.
-	 * @returns {void}
-	 */
-	function attachMarkdownViewer($control, field) {
-		if (!$control.is('textarea')) {
-			LOGGER.warn('Markdown viewer skipped for non-textarea field', field.name);
-			return;
-		}
-		state.markdownControllers[field.name] = createMarkdownController($control, field);
-	}
-
-	/**
 	 * Ensures the bundled Ace editor is loaded and configured.
 	 *
 	 * @returns {Promise}
@@ -1793,197 +2294,6 @@
 	}
 
 	/**
-	 * Builds a JSON controller for one text field.
-	 *
-	 * @param {jQuery} $control Field input or textarea.
-	 * @param {object} field Field configuration.
-	 * @returns {object}
-	 */
-	function createJsonController($control, field) {
-		const fieldName = field.name;
-		const jsonConfig = field.json || {};
-		const jsonOnly = !!jsonConfig.editorOnly;
-		const storageFormat = $control.is('textarea') && jsonConfig.format !== 'compact' ? 'pretty' : 'compact';
-		const displayFormat = 'pretty';
-		const initialHeight = Number.isInteger(jsonConfig.height) && jsonConfig.height > 0
-			? Math.max(jsonConfig.height, MIN_MARKDOWN_HEIGHT)
-			: null;
-		const editorId = `rc-text-viewer-ace-${fieldName}`;
-		const $toolbar = $('<div/>', {
-			class: 'rc-text-viewer-md-toolbar rc-text-viewer-json-toolbar d-print-none',
-			'data-rc-text-viewer-field': fieldName,
-		});
-		const $tabs = $('<span/>', { class: 'rc-text-viewer-md-tabs' });
-		const $editability = createEditStateIndicator(!!field.readonly);
-		const $rawTab = $('<a/>', {
-			href: 'javascript:;',
-			class: 'rc-text-viewer-md-tab',
-			'data-rc-json-mode': VIEW_RAW,
-			text: 'Raw',
-		});
-		const $jsonTab = $('<a/>', {
-			href: 'javascript:;',
-			class: 'rc-text-viewer-md-tab',
-			'data-rc-json-mode': VIEW_JSON,
-			text: 'JSON',
-		});
-		const $status = $('<span/>', {
-			class: 'rc-text-viewer-json-status',
-			'aria-live': 'polite',
-		});
-		const $actions = $('<span/>', { class: 'rc-text-viewer-md-actions' });
-		const $expandButton = createIconButton('expand', 'fa-solid fa-arrows-left-right', 'Expand to row width');
-		const $fullscreenButton = createIconButton('fullscreen', 'fa-solid fa-maximize', 'Fullscreen');
-		const $collapseButton = createIconButton('collapse', 'fa-solid fa-down-left-and-up-right-to-center', 'Collapse');
-		const $themeButton = createIconButton('toggle-theme', 'fa-solid fa-moon', 'Switch to dark mode');
-		if (field.rowConfig !== 'split') {
-			$expandButton.addClass('rc-text-viewer-md-action--unavailable');
-		}
-		const $viewer = $('<div/>', {
-			class: 'rc-text-viewer-json-preview',
-			'data-rc-text-viewer-field': fieldName,
-		});
-		const $editor = $('<div/>', { id: editorId, class: 'rc-text-viewer__ace' });
-		const $resizeHandle = $('<div/>', {
-			class: 'rc-text-viewer-md-resize-handle',
-			role: 'separator',
-			'aria-orientation': 'horizontal',
-			title: 'Drag to resize',
-		});
-		const $rawPanel = $('<div/>', {
-			class: 'rc-text-viewer-raw-panel',
-			'data-rc-text-viewer-field': fieldName,
-		});
-		const $rawResizeHandle = $('<div/>', {
-			class: 'rc-text-viewer-md-resize-handle',
-			role: 'separator',
-			'aria-orientation': 'horizontal',
-			title: 'Drag to resize',
-		});
-		const canExpandRaw = $control.is('textarea');
-		const controller = createTextViewerController({
-			viewerType: 'json',
-			themeType: 'json',
-			field: field,
-			$control: $control,
-			$toolbar: $toolbar,
-			$viewer: $viewer,
-			$editor: $editor,
-			$rawPanel: $rawPanel,
-			$resizeHandle: $resizeHandle,
-			$rawResizeHandle: $rawResizeHandle,
-			$actions: $actions,
-			$expandButton: $expandButton,
-			$fullscreenButton: $fullscreenButton,
-			$collapseButton: $collapseButton,
-			$themeButton: $themeButton,
-			initialHeight: initialHeight,
-		});
-		$.extend(controller, {
-			$status: $status,
-			jsonOnly: jsonOnly,
-			displayFormat: displayFormat,
-			storageFormat: storageFormat,
-			indent: jsonConfig.indent || 2,
-			mode: jsonConfig.initialMode === VIEW_JSON ? VIEW_JSON : VIEW_RAW,
-			getActivePanel: function () { return getJsonActivePanel(controller); },
-			getPanelSet: function () { return controller.$viewer.add(controller.$rawPanel); },
-			getContentHeight: function () { return getJsonContentHeight(controller); },
-			setHeight: function (height, userResize) { setTextViewerHeight(controller, height, userResize !== false); },
-			syncSize: function (captureHeight) { syncTextViewerNormalSize(controller, captureHeight); },
-			restoreVisibleMode: function () { restoreJsonVisibleMode(controller); },
-			setMode: function (mode) { setJsonMode(controller, mode); },
-			updateToolbar: function () { updateJsonToolbar(controller); },
-			isPanelMode: function () { return controller.mode === VIEW_JSON || (controller.mode === VIEW_RAW && controller.canExpandRaw); },
-			isThemeableMode: function () { return controller.mode === VIEW_JSON; },
-			modeAttribute: 'data-rc-json-mode',
-			layoutAttribute: 'data-rc-json-layout',
-			defaultMode: VIEW_JSON,
-			updatingEditor: false,
-			updatingControl: false,
-			skipNextControlRender: false,
-			editorChangeGeneration: 0,
-			suppressedEditorChangeGeneration: null,
-		});
-
-		if (field.readonly) {
-			applyReadonlyState($control, controller.$row);
-		}
-
-		if (jsonOnly) {
-			controller.mode = VIEW_JSON;
-			$tabs.append($editability, $jsonTab, $status);
-		}
-		else {
-			$tabs.append($editability, $rawTab, $('<span/>', { class: 'rc-text-viewer-md-tab-separator', text: '|' }), $jsonTab, $status);
-		}
-		$actions.append($themeButton, $expandButton, $fullscreenButton, $collapseButton);
-		$toolbar.append($tabs, $actions);
-		$viewer.append($editor, $resizeHandle);
-		if (canExpandRaw) {
-			$control.before($rawPanel);
-			$rawPanel.append($control, $rawResizeHandle);
-			$rawPanel.before($toolbar);
-			$rawPanel.after($viewer);
-		}
-		else {
-			$control.before($toolbar);
-			$control.after($viewer);
-		}
-
-		$toolbar.on('click', '[data-rc-json-mode]', function (ev) {
-			ev.preventDefault();
-			const mode = $(this).attr('data-rc-json-mode');
-			if (mode !== controller.mode) {
-				setJsonMode(controller, mode);
-			}
-		});
-		$toolbar.on('click', '[data-rc-text-viewer-action]', function (ev) {
-			ev.preventDefault();
-			handleTextViewerAction(controller, $(this).attr('data-rc-text-viewer-action'));
-		});
-		ensureAce().then(function () {
-			const editor = createAceEditor(editorId, {
-				mode: VIEW_JSON,
-				theme: getPreferredAceTheme(controller.themeType),
-				readOnly: !!field.readonly,
-				useWorker: false,
-				indent: controller.indent,
-			});
-			controller.editor = editor;
-			controller.currentTheme = getThemePreference(controller.themeType);
-			state.editors[fieldName] = editor;
-			const syncFromEditor = debounce(function () {
-				syncJsonFromEditor(controller);
-			}, 100);
-			editor.session.on('change', function () {
-				const changeGeneration = controller.editorChangeGeneration;
-				if (changeGeneration === controller.suppressedEditorChangeGeneration) {
-					controller.suppressedEditorChangeGeneration = null;
-					return;
-				}
-				syncFromEditor();
-			});
-			editor.on('blur', function () {
-				normalizeJsonEditor(controller);
-			});
-			renderJsonFromControl(controller);
-			syncTextViewerNormalSize(controller);
-			editor.resize();
-		}).catch(function (e) {
-			const formatted = formatJson($control.val() || '', controller.displayFormat, controller.indent);
-			$viewer.html($('<pre/>', { class: 'rc-text-viewer__fallback' }).text(formatted.text));
-			setJsonStatus(controller, formatted);
-			LOGGER.warn('Ace failed to load', e);
-		});
-
-		initTextViewerResizeHandles(controller);
-		setJsonMode(controller, controller.mode);
-		LOGGER.log('Controller created', controller);
-		return controller;
-	}
-
-	/**
 	 * Sets the visible JSON field mode.
 	 *
 	 * @param {object} controller JSON controller.
@@ -1991,48 +2301,14 @@
 	 * @returns {void}
 	 */
 	function setJsonMode(controller, mode) {
-		if (controller.jsonOnly || mode === VIEW_JSON) {
-			mode = VIEW_JSON;
-		}
-		else {
-			mode = VIEW_RAW;
-		}
-
-		const previousMode = controller.mode;
-		const previousLayout = controller.layout;
-		if (previousMode === VIEW_RAW && mode !== VIEW_RAW) {
-			renderJsonFromControl(controller);
-		}
-		if (previousMode !== mode && previousLayout !== LAYOUT_NORMAL) {
-			rememberTextViewerHeight(controller);
-			restoreTextViewerLayout(controller);
-		}
-		controller.mode = mode;
-		if (mode === VIEW_RAW) {
-			normalizeJsonEditor(controller);
-			syncTextViewerNormalSize(controller, true);
-			controller.$control.show();
-			controller.$rawPanel.css('display', controller.canExpandRaw ? 'flex' : 'none');
-			controller.$expandLink.hide();
-			controller.$viewer.css('display', 'none');
-		}
-		else {
-			syncTextViewerNormalSize(controller, true);
-			controller.$control.hide();
-			controller.$rawPanel.css('display', 'none');
-			controller.$expandLink.hide();
-			controller.$viewer.css('display', 'flex');
-			if (controller.editor) {
-				controller.editor.resize();
-			}
-		}
-		updateJsonToolbar(controller);
-		if (previousMode !== mode && previousLayout === LAYOUT_EXPANDED) {
-			expandTextViewer(controller);
-		}
-		if (previousMode !== mode && previousLayout === LAYOUT_FULLSCREEN) {
-			fullscreenTextViewer(controller);
-		}
+		setAceBackedMode(controller, mode, {
+			editorMode: VIEW_JSON,
+			editorOnlyProperty: 'jsonOnly',
+			renderFromControl: renderJsonFromControl,
+			normalizeEditor: normalizeJsonEditor,
+			resizeEditor: resizeAceEditor,
+			updateToolbar: updateJsonToolbar,
+		});
 	}
 
 	/**
@@ -2052,7 +2328,7 @@
 	 * @returns {jQuery}
 	 */
 	function getJsonActivePanel(controller) {
-		return controller.mode === VIEW_RAW && controller.canExpandRaw ? controller.$rawPanel : controller.$viewer;
+		return getAceBackedActivePanel(controller);
 	}
 
 	/**
@@ -2062,18 +2338,7 @@
 	 * @returns {void}
 	 */
 	function restoreJsonVisibleMode(controller) {
-		if (controller.mode === VIEW_RAW) {
-			controller.$control.show();
-			controller.$rawPanel.css('display', controller.canExpandRaw ? 'flex' : 'none');
-			controller.$viewer.css('display', 'none');
-			return;
-		}
-		controller.$control.hide();
-		controller.$rawPanel.css('display', 'none');
-		controller.$viewer.css('display', 'flex');
-		if (controller.editor) {
-			controller.editor.resize();
-		}
+		restoreAceBackedVisibleMode(controller, resizeAceEditor);
 	}
 
 	/**
@@ -2083,15 +2348,7 @@
 	 * @returns {number}
 	 */
 	function getJsonContentHeight(controller) {
-		if (controller.mode === VIEW_RAW && controller.canExpandRaw) {
-			const control = controller.$control[0];
-			return control ? control.scrollHeight + controller.$rawResizeHandle.outerHeight() : MIN_MARKDOWN_HEIGHT;
-		}
-		if (controller.editor) {
-			const lineHeight = controller.editor.renderer.lineHeight || 16;
-			return (controller.editor.session.getScreenLength() * lineHeight) + 24;
-		}
-		return MIN_MARKDOWN_HEIGHT;
+		return getAceBackedContentHeight(controller);
 	}
 
 	/**
@@ -2204,212 +2461,6 @@
 	}
 
 	/**
-	 * Renders a JSON viewer and wires it to field changes.
-	 *
-	 * @param {jQuery} $control Field input or textarea.
-	 * @param {object} field Field configuration.
-	 * @returns {void}
-	 */
-	function attachJsonViewer($control, field) {
-		state.jsonControllers[field.name] = createJsonController($control, field);
-	}
-
-	/**
-	 * Builds an Ace text controller for one text field.
-	 *
-	 * @param {jQuery} $control Field input or textarea.
-	 * @param {object} field Field configuration.
-	 * @param {string} mode Ace language mode key.
-	 * @returns {object}
-	 */
-	function createAceTextController($control, field, mode) {
-		const modeMeta = { normalizes: ACE_TEXT_MODES[mode], label: state.config.labels[mode] || mode.toUpperCase() };
-		const fieldName = field.name;
-		const modeConfig = field[mode] || {};
-		const editorOnly = !!modeConfig.editorOnly;
-		const storageFormat = $control.is('textarea') && modeConfig.format !== 'compact' ? 'pretty' : 'compact';
-		const initialHeight = Number.isInteger(modeConfig.height) && modeConfig.height > 0
-			? Math.max(modeConfig.height, MIN_MARKDOWN_HEIGHT)
-			: null;
-		const editorId = `rc-text-viewer-${mode}-ace-${fieldName}`;
-		const $toolbar = $('<div/>', {
-			class: 'rc-text-viewer-md-toolbar rc-text-viewer-code-toolbar d-print-none',
-			'data-rc-text-viewer-field': fieldName,
-		});
-		const $tabs = $('<span/>', { class: 'rc-text-viewer-md-tabs' });
-		const $editability = createEditStateIndicator(!!field.readonly);
-		const $rawTab = $('<a/>', {
-			href: 'javascript:;',
-			class: 'rc-text-viewer-md-tab',
-			'data-rc-code-mode': VIEW_RAW,
-			text: 'Raw',
-		});
-		const $codeTab = $('<a/>', {
-			href: 'javascript:;',
-			class: 'rc-text-viewer-md-tab',
-			'data-rc-code-mode': mode,
-			text: modeConfig.label || modeMeta.label,
-		});
-		const $status = $('<span/>', {
-			class: 'rc-text-viewer-json-status',
-			'aria-live': 'polite',
-		});
-		const $actions = $('<span/>', { class: 'rc-text-viewer-md-actions' });
-		const $expandButton = createIconButton('expand', 'fa-solid fa-arrows-left-right', 'Expand to row width');
-		const $fullscreenButton = createIconButton('fullscreen', 'fa-solid fa-maximize', 'Fullscreen');
-		const $collapseButton = createIconButton('collapse', 'fa-solid fa-down-left-and-up-right-to-center', 'Collapse');
-		const $themeButton = createIconButton('toggle-theme', 'fa-solid fa-moon', 'Switch to dark mode');
-		if (field.rowConfig !== 'split') {
-			$expandButton.addClass('rc-text-viewer-md-action--unavailable');
-		}
-		const $viewer = $('<div/>', {
-			class: 'rc-text-viewer-json-preview rc-text-viewer-code-preview',
-			'data-rc-text-viewer-field': fieldName,
-		});
-		const $editor = $('<div/>', { id: editorId, class: 'rc-text-viewer__ace' });
-		const $resizeHandle = $('<div/>', {
-			class: 'rc-text-viewer-md-resize-handle',
-			role: 'separator',
-			'aria-orientation': 'horizontal',
-			title: 'Drag to resize',
-		});
-		const $rawPanel = $('<div/>', {
-			class: 'rc-text-viewer-raw-panel',
-			'data-rc-text-viewer-field': fieldName,
-		});
-		const $rawResizeHandle = $('<div/>', {
-			class: 'rc-text-viewer-md-resize-handle',
-			role: 'separator',
-			'aria-orientation': 'horizontal',
-			title: 'Drag to resize',
-		});
-		const canExpandRaw = $control.is('textarea');
-		const controller = createTextViewerController({
-			viewerType: mode,
-			themeType: mode,
-			field: field,
-			$control: $control,
-			$toolbar: $toolbar,
-			$viewer: $viewer,
-			$editor: $editor,
-			$rawPanel: $rawPanel,
-			$resizeHandle: $resizeHandle,
-			$rawResizeHandle: $rawResizeHandle,
-			$actions: $actions,
-			$expandButton: $expandButton,
-			$fullscreenButton: $fullscreenButton,
-			$collapseButton: $collapseButton,
-			$themeButton: $themeButton,
-			initialHeight: initialHeight,
-		});
-		$.extend(controller, {
-			$status: $status,
-			aceMode: mode,
-			modeLabel: modeConfig.label || modeMeta.label,
-			editorOnly: editorOnly,
-			normalizes: !!modeMeta.normalizes,
-			displayFormat: 'pretty',
-			storageFormat: storageFormat,
-			indent: modeConfig.indent || 2,
-			mode: modeConfig.initialMode === mode ? mode : VIEW_RAW,
-			getActivePanel: function () { return getAceTextActivePanel(controller); },
-			getPanelSet: function () { return controller.$viewer.add(controller.$rawPanel); },
-			getContentHeight: function () { return getAceTextContentHeight(controller); },
-			setHeight: function (height, userResize) { setTextViewerHeight(controller, height, userResize !== false); },
-			syncSize: function (captureHeight) { syncTextViewerNormalSize(controller, captureHeight); },
-			restoreVisibleMode: function () { restoreAceTextVisibleMode(controller); },
-			setMode: function (nextMode) { setAceTextMode(controller, nextMode); },
-			updateToolbar: function () { updateAceTextToolbar(controller); },
-			isPanelMode: function () { return controller.mode === controller.aceMode || (controller.mode === VIEW_RAW && controller.canExpandRaw); },
-			isThemeableMode: function () { return controller.mode === controller.aceMode; },
-			modeAttribute: 'data-rc-code-mode',
-			layoutAttribute: 'data-rc-code-layout',
-			defaultMode: mode,
-			updatingEditor: false,
-			updatingControl: false,
-			skipNextControlRender: false,
-			editorChangeGeneration: 0,
-			suppressedEditorChangeGeneration: null,
-		});
-
-		if (field.readonly) {
-			applyReadonlyState($control, controller.$row);
-		}
-
-		if (editorOnly) {
-			controller.mode = mode;
-			$tabs.append($editability, $codeTab, $status);
-		}
-		else {
-			$tabs.append($editability, $rawTab, $('<span/>', { class: 'rc-text-viewer-md-tab-separator', text: '|' }), $codeTab, $status);
-		}
-		$actions.append($themeButton, $expandButton, $fullscreenButton, $collapseButton);
-		$toolbar.append($tabs, $actions);
-		$viewer.append($editor, $resizeHandle);
-		if (canExpandRaw) {
-			$control.before($rawPanel);
-			$rawPanel.append($control, $rawResizeHandle);
-			$rawPanel.before($toolbar);
-			$rawPanel.after($viewer);
-		}
-		else {
-			$control.before($toolbar);
-			$control.after($viewer);
-		}
-
-		$toolbar.on('click', '[data-rc-code-mode]', function (ev) {
-			ev.preventDefault();
-			const nextMode = $(this).attr('data-rc-code-mode');
-			if (nextMode !== controller.mode) {
-				setAceTextMode(controller, nextMode);
-			}
-		});
-		$toolbar.on('click', '[data-rc-text-viewer-action]', function (ev) {
-			ev.preventDefault();
-			handleTextViewerAction(controller, $(this).attr('data-rc-text-viewer-action'));
-		});
-		ensureAce().then(function () {
-			const editor = createAceEditor(editorId, {
-				mode: mode,
-				theme: getPreferredAceTheme(controller.themeType),
-				readOnly: !!field.readonly,
-				useWorker: false,
-				indent: controller.indent,
-			});
-			controller.editor = editor;
-			controller.currentTheme = getThemePreference(controller.themeType);
-			state.editors[`${fieldName}-${mode}`] = editor;
-			const syncFromEditor = debounce(function () {
-				syncAceTextFromEditor(controller);
-			}, 100);
-			editor.session.on('change', function () {
-				const changeGeneration = controller.editorChangeGeneration;
-				if (changeGeneration === controller.suppressedEditorChangeGeneration) {
-					controller.suppressedEditorChangeGeneration = null;
-					return;
-				}
-				syncFromEditor();
-			});
-			editor.on('blur', function () {
-				normalizeAceTextEditor(controller);
-			});
-			renderAceTextFromControl(controller);
-			syncTextViewerNormalSize(controller);
-			editor.resize();
-		}).catch(function (e) {
-			const formatted = formatAceText($control.val() || '', controller.aceMode, controller.displayFormat, controller.indent);
-			$viewer.html($('<pre/>', { class: 'rc-text-viewer__fallback' }).text(formatted.text));
-			setAceTextStatus(controller, formatted);
-			LOGGER.warn('Ace failed to load for ' + mode, e);
-		});
-
-		initTextViewerResizeHandles(controller);
-		setAceTextMode(controller, controller.mode);
-		LOGGER.log('Controller created', controller);
-		return controller;
-	}
-
-	/**
 	 * Sets the visible generic Ace text mode.
 	 *
 	 * @param {object} controller Ace text controller.
@@ -2417,46 +2468,14 @@
 	 * @returns {void}
 	 */
 	function setAceTextMode(controller, mode) {
-		if (controller.editorOnly || mode === controller.aceMode) {
-			mode = controller.aceMode;
-		}
-		else {
-			mode = VIEW_RAW;
-		}
-
-		const previousMode = controller.mode;
-		const previousLayout = controller.layout;
-		if (previousMode === VIEW_RAW && mode !== VIEW_RAW) {
-			renderAceTextFromControl(controller);
-		}
-		if (previousMode !== mode && previousLayout !== LAYOUT_NORMAL) {
-			rememberTextViewerHeight(controller);
-			restoreTextViewerLayout(controller);
-		}
-		controller.mode = mode;
-		if (mode === VIEW_RAW) {
-			normalizeAceTextEditor(controller);
-			syncTextViewerNormalSize(controller, true);
-			controller.$control.show();
-			controller.$rawPanel.css('display', controller.canExpandRaw ? 'flex' : 'none');
-			controller.$expandLink.hide();
-			controller.$viewer.css('display', 'none');
-		}
-		else {
-			syncTextViewerNormalSize(controller, true);
-			controller.$control.hide();
-			controller.$rawPanel.css('display', 'none');
-			controller.$expandLink.hide();
-			controller.$viewer.css('display', 'flex');
-			resizeTextViewerEditor(controller);
-		}
-		updateAceTextToolbar(controller);
-		if (previousMode !== mode && previousLayout === LAYOUT_EXPANDED) {
-			expandTextViewer(controller);
-		}
-		if (previousMode !== mode && previousLayout === LAYOUT_FULLSCREEN) {
-			fullscreenTextViewer(controller);
-		}
+		setAceBackedMode(controller, mode, {
+			editorMode: controller.aceMode,
+			editorOnlyProperty: 'editorOnly',
+			renderFromControl: renderAceTextFromControl,
+			normalizeEditor: normalizeAceTextEditor,
+			resizeEditor: resizeTextViewerEditor,
+			updateToolbar: updateAceTextToolbar,
+		});
 	}
 
 	/**
@@ -2476,7 +2495,7 @@
 	 * @returns {jQuery}
 	 */
 	function getAceTextActivePanel(controller) {
-		return controller.mode === VIEW_RAW && controller.canExpandRaw ? controller.$rawPanel : controller.$viewer;
+		return getAceBackedActivePanel(controller);
 	}
 
 	/**
@@ -2486,16 +2505,7 @@
 	 * @returns {void}
 	 */
 	function restoreAceTextVisibleMode(controller) {
-		if (controller.mode === VIEW_RAW) {
-			controller.$control.show();
-			controller.$rawPanel.css('display', controller.canExpandRaw ? 'flex' : 'none');
-			controller.$viewer.css('display', 'none');
-			return;
-		}
-		controller.$control.hide();
-		controller.$rawPanel.css('display', 'none');
-		controller.$viewer.css('display', 'flex');
-		resizeTextViewerEditor(controller);
+		restoreAceBackedVisibleMode(controller, resizeTextViewerEditor);
 	}
 
 	/**
@@ -2505,15 +2515,7 @@
 	 * @returns {number}
 	 */
 	function getAceTextContentHeight(controller) {
-		if (controller.mode === VIEW_RAW && controller.canExpandRaw) {
-			const control = controller.$control[0];
-			return control ? control.scrollHeight + controller.$rawResizeHandle.outerHeight() : MIN_MARKDOWN_HEIGHT;
-		}
-		if (controller.editor) {
-			const lineHeight = controller.editor.renderer.lineHeight || 16;
-			return (controller.editor.session.getScreenLength() * lineHeight) + 24;
-		}
-		return MIN_MARKDOWN_HEIGHT;
+		return getAceBackedContentHeight(controller);
 	}
 
 	/**
@@ -2623,22 +2625,6 @@
 	}
 
 	/**
-	 * Renders a generic Ace text enhancement and wires it to field changes.
-	 *
-	 * @param {jQuery} $control Field input or textarea.
-	 * @param {object} field Field configuration.
-	 * @param {string} mode Ace language mode key.
-	 * @returns {void}
-	 */
-	function attachAceTextViewer($control, field, mode) {
-		if (!ACE_TEXT_MODES[mode]) {
-			LOGGER.warn('Unsupported Ace text mode skipped', mode, field.name);
-			return;
-		}
-		state.aceTextControllers[`${field.name}-${mode}`] = createAceTextController($control, field, mode);
-	}
-
-	/**
 	 * Attaches all configured viewers after REDCap has rendered the form.
 	 *
 	 * @returns {void}
@@ -2657,15 +2643,7 @@
 					return;
 				}
 				$control.data(key, true);
-				if (viewerType === VIEW_MARKDOWN) {
-					attachMarkdownViewer($control, field);
-				}
-				if (viewerType === 'json') {
-					attachJsonViewer($control, field);
-				}
-				if (ACE_TEXT_MODES[viewerType]) {
-					attachAceTextViewer($control, field, viewerType);
-				}
+				attachEnhancedTextViewer($control, field, viewerType);
 			});
 		});
 	}
@@ -2681,6 +2659,18 @@
 			debug: false,
 			fields: [],
 			jsmoName: null,
+			labels: {
+				raw: 'Raw',
+				text: 'Text',
+				markdown: 'Markdown',
+				html: 'HTML',
+				json: 'JSON',
+				css: 'CSS',
+				ini: 'INI',
+				r: 'R',
+				xml: 'XML',
+				yaml: 'YAML',
+			},
 			themePreferences: {
 				text: THEME_LIGHT,
 				json: THEME_LIGHT,
@@ -2712,9 +2702,7 @@
 			config: state.config,
 			refresh: attachConfiguredViewers,
 			editors: state.editors,
-			markdownControllers: state.markdownControllers,
-			jsonControllers: state.jsonControllers,
-			aceTextControllers: state.aceTextControllers,
+			controllers: state.controllers,
 		};
 	}
 
