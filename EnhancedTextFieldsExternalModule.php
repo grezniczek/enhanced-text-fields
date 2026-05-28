@@ -386,12 +386,13 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 				if (($fieldMetadata['element_type'] ?? '') === 'text') {
 					$params['format'] = 'compact';
 				}
+				$isFile = $fieldMetadata['element_type'] === 'file';
 				if (!isset($viewerFields[$fieldName])) {
 					$viewerFields[$fieldName] = [
 						'name' => $fieldName,
-						'isFile' => $fieldMetadata['element_type'] === 'file',
+						'isFile' => $isFile,
 						'viewers' => [$mode],
-						'readonly' => $is_readonly($fieldName),
+						'readonly' => $isFile || $is_readonly($fieldName), // Files are always read-only
 						'rowConfig' => in_array($fieldMetadata['custom_alignment'] ?? '', ['LH', 'LV']) ? 'full' : 'split',
 						$mode => $params,
 					];
