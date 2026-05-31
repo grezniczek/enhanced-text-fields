@@ -226,22 +226,20 @@
 .rc-text-viewer__icon-button {
 	align-items: center;
 	background: transparent;
-	border: 1px solid transparent;
-	border-radius: 3px;
+	border: none;
 	color: #4b5563;
 	cursor: pointer;
 	display: inline-flex;
-	height: 22px;
 	justify-content: center;
 	padding: 0;
-	width: 24px;
+	margin-left: 2px;
 }
 
 .rc-text-viewer__icon-button:hover,
 .rc-text-viewer__icon-button:focus {
 	background: #fff;
 	border-color: #c7ccd1;
-	color: #111827;
+	color: #000000;
 	outline: none;
 }
 

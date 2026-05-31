@@ -157,12 +157,13 @@
 	 * @param {string} action Action identifier.
 	 * @param {string} iconClass Font Awesome icon class.
 	 * @param {string} title Accessible title.
+	 * @param {string} extraClass Extra CSS class.
 	 * @returns {jQuery}
 	 */
-	function createIconButton(action, iconClass, title) {
+	function createIconButton(action, iconClass, title, extraClass = '') {
 		return $('<button/>', {
 			type: 'button',
-			class: 'rc-text-viewer__icon-button',
+			class: 'rc-text-viewer__icon-button' + (extraClass ? ' ' + extraClass : ''),
 			title: title,
 			'aria-label': title,
 			'data-rc-text-viewer-action': action,
@@ -330,7 +331,7 @@
 		const title = theme === THEME_DARK
 			? getString('button_switch_light', 'Switch to light mode')
 			: getString('button_switch_dark', 'Switch to dark mode');
-		const iconClass = theme === THEME_DARK ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
+		const iconClass = theme === THEME_DARK ? 'fa-regular fa-sun' : 'fa-solid fa-moon';
 		controller.$themeButton.attr('title', title).attr('aria-label', title);
 		controller.$themeButton.find('i').attr('class', iconClass).attr('aria-hidden', 'true');
 	}
@@ -595,10 +596,10 @@
 		});
 		const $tabs = $('<span/>', { class: 'rc-text-viewer-md-tabs' });
 		const $actions = $('<span/>', { class: 'rc-text-viewer-md-actions' });
-		const $expandButton = createIconButton('expand', 'fa-solid fa-arrows-left-right', getString('button_expand', 'Expand to row width'));
-		const $fullscreenButton = createIconButton('fullscreen', 'fa-solid fa-maximize', getString('button_fullscreen', 'Fullscreen'));
-		const $collapseButton = createIconButton('collapse', 'fa-solid fa-down-left-and-up-right-to-center', getString('button_collapse', 'Collapse'));
-		const $themeButton = createIconButton('toggle-theme', 'fa-solid fa-moon', getString('button_switch_dark', 'Switch to dark mode'));
+		const $expandButton = createIconButton('expand', 'fa-regular fa-square-caret-left', getString('button_expand', 'Expand to row width'));
+		const $fullscreenButton = createIconButton('fullscreen', 'fa-regular fa-square-caret-up', getString('button_fullscreen', 'Fullscreen'));
+		const $collapseButton = createIconButton('collapse', 'fa-solid fa-close', getString('button_collapse', 'Collapse'));
+		const $themeButton = createIconButton('toggle-theme', 'fa-solid fa-moon', getString('button_switch_dark', 'Switch to dark mode'), 'me-2');
 		if (!canExpandToRowWidth) {
 			$expandButton.addClass('rc-text-viewer-md-action--unavailable');
 		}
