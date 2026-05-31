@@ -331,7 +331,7 @@
 		const title = theme === THEME_DARK
 			? getString('button_switch_light', 'Switch to light mode')
 			: getString('button_switch_dark', 'Switch to dark mode');
-		const iconClass = theme === THEME_DARK ? 'fa-regular fa-sun' : 'fa-solid fa-moon';
+		const iconClass = theme === THEME_DARK ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
 		controller.$themeButton.attr('title', title).attr('aria-label', title);
 		controller.$themeButton.find('i').attr('class', iconClass).attr('aria-hidden', 'true');
 	}
