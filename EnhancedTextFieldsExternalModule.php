@@ -138,7 +138,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 		$config = array(
 			'debug' => $this->js_debug,
 			'isSurvey' => $is_survey,
-			'jsmoName' => $this->getJavascriptModuleObjectName(),
+			'jsmoName' => $this->framework->getJavascriptModuleObjectName(),
 			'themePreferences' => $this->getThemePreferences($user_id),
 			'fields' => $enhanced_fields,
 			'labels' => $this->getModeLabels(),
@@ -161,7 +161,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 		$inject->js('js/enhanced-text-fields.js');
 
 		// Inject the JSMO and the module initialization code.
-		$this->initializeJavascriptModuleObject();
+		$this->framework->initializeJavascriptModuleObject();
 
 		print \RCView::script(<<<JS
 			DE_RUB_SEG_EnhancedTextFieldsEM.init($config_json);
@@ -169,20 +169,50 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 	}
 
 	/**
-	 * Gets the display strings used in the client
-	 * @return Array<string,string>  
+	 * Gets the display strings used in the client.
+	 *
+	 * @return array<string,string>
 	 */
-	private function getStrings() {
-		// TODO: Add strings
-		$strings = [
-			'display_01' => $this->framework->tt('display_01'),
-			'display_02' => $this->framework->tt('display_02'),
-
-		];
-
-
-
+	private function getStrings()
+	{
+		$strings = [];
+		foreach ($this->getClientStringKeys() as $key) {
+			$strings[$key] = $this->framework->tt($key);
+		}
 		return $strings;
+	}
+
+	/**
+	 * Returns translation keys for strings displayed by client-side controls.
+	 *
+	 * @return array
+	 */
+	private function getClientStringKeys()
+	{
+		return [
+			'display_editable',
+			'display_readonly',
+			'button_close',
+			'button_collapse',
+			'button_expand',
+			'button_fullscreen',
+			'button_switch_dark',
+			'button_switch_light',
+			'button_view',
+			'aria_view_file',
+			'error_ajax_unavailable',
+			'error_file_preview_response',
+			'error_file_preview_unavailable',
+			'error_file_unavailable',
+			'error_xml_parse',
+			'label_or',
+			'status_loading',
+			'status_invalid',
+			'status_valid',
+			'title_file_preview_unavailable',
+			'title_resize',
+			'title_view_file',
+		];
 	}
 
 
@@ -336,7 +366,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 	{
 		$docId = $payload['docId'];
 		$content = false;
-		$error = 'This file is not currently available for viewing.';
+		$error = $this->framework->tt('error_file_unavailable');
 		do {
 			// Validate hash
 			$docIdHash = $payload['docIdHash'];
@@ -360,14 +390,14 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			if ($fileInfo['doc_name'] !== $payload['filename']) break;
 			$maxFileSize = $this->getMaxAllowedFileSize($project_id);
 			if ($maxFileSize > 0 && (intval($fileInfo['doc_size']) > $maxFileSize)) {
-				$error = "The file size exceeds maximum allowed size of {$maxFileSize} bytes.";
+				$error = str_replace('{maxFileSize}', $maxFileSize, $this->framework->tt('error_file_too_large'));
 				break;
 			}
 
 			// Validate record DAG
 			if (!empty($record) && !empty($user_id)) {
 				if (!\Records::recordBelongsToUsersDAG($project_id, $record)) {
-					$error = "The record associated with this file does not belong to your data access group.";
+					$error = $this->framework->tt('error_record_dag');
 					break;
 				}
 			}
@@ -567,16 +597,16 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 	 */
 	private function getModeLabels() {
 		return array(
-			'raw' => 'Raw',
-			'text' => 'Text',
-			'markdown' => 'Markdown',
-			'html' => 'HTML',
-			'json' => 'JSON',
-			'css' => 'CSS',
-			'ini' => 'INI',
-			'r' => 'R',
-			'xml' => 'XML',
-			'yaml' => 'YAML',
+			'raw' => $this->framework->tt('mode_raw'),
+			'text' => $this->framework->tt('mode_text'),
+			'markdown' => $this->framework->tt('mode_markdown'),
+			'html' => $this->framework->tt('mode_html'),
+			'json' => $this->framework->tt('mode_json'),
+			'css' => $this->framework->tt('mode_css'),
+			'ini' => $this->framework->tt('mode_ini'),
+			'r' => $this->framework->tt('mode_r'),
+			'xml' => $this->framework->tt('mode_xml'),
+			'yaml' => $this->framework->tt('mode_yaml'),
 		);
 	}
 

@@ -176,14 +176,13 @@
 	 * @returns {jQuery}
 	 */
 	function createEditStateIndicator(readonly) {
+		const label = readonly
+			? getString('display_readonly', 'Readonly')
+			: getString('display_editable', 'Editable');
 		return $('<span/>', {
 			class: 'rc-text-viewer-edit-state' + (readonly ? ' rc-text-viewer-edit-state--readonly' : ''),
-			title: readonly 
-				? state.config.strings.display_01 // Readonly
-				: state.config.strings.display_02, // Editable
-			'aria-label': readonly 
-				? state.config.strings.display_01 // Readonly
-				: state.config.strings.display_02, // Editable
+			title: label,
+			'aria-label': label,
 		}).append(
 			$('<i/>', { class: 'fa-solid fa-pencil rc-text-viewer-edit-state__pencil', 'aria-hidden': 'true' }),
 			$('<i/>', { class: 'fa-solid fa-slash rc-text-viewer-edit-state__slash', 'aria-hidden': 'true' })
@@ -328,7 +327,9 @@
 			return;
 		}
 		const theme = getThemePreference(controller.themeMode);
-		const title = theme === THEME_DARK ? 'Switch to light mode' : 'Switch to dark mode';
+		const title = theme === THEME_DARK
+			? getString('button_switch_light', 'Switch to light mode')
+			: getString('button_switch_dark', 'Switch to dark mode');
 		const iconClass = theme === THEME_DARK ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
 		controller.$themeButton.attr('title', title).attr('aria-label', title);
 		controller.$themeButton.find('i').attr('class', iconClass).attr('aria-hidden', 'true');
@@ -525,6 +526,36 @@
 	}
 
 	/**
+	 * Returns a translated client display string.
+	 *
+	 * @param {string} key Translation key.
+	 * @param {string} fallback Fallback text.
+	 * @returns {string}
+	 */
+	function getString(key, fallback) {
+		const strings = (state.config && state.config.strings) || {};
+		return strings[key] || fallback;
+	}
+
+	/**
+	 * Returns a translated display string with simple named replacements.
+	 *
+	 * @param {string} key Translation key.
+	 * @param {string} fallback Fallback text.
+	 * @param {object} replacements Placeholder values.
+	 * @returns {string}
+	 */
+	function formatString(key, fallback, replacements) {
+		let output = getString(key, fallback);
+		Object.keys(replacements || {}).forEach(function (name) {
+			output = output.replace(new RegExp('\\{' + name + '\\}', 'g'), function () {
+				return replacements[name];
+			});
+		});
+		return output;
+	}
+
+	/**
 	 * Returns an initial viewer height from a mode config.
 	 *
 	 * @param {object} modeConfig Field mode configuration.
@@ -546,7 +577,7 @@
 			class: 'rc-text-viewer-md-resize-handle',
 			role: 'separator',
 			'aria-orientation': 'horizontal',
-			title: 'Drag to resize',
+			title: getString('title_resize', 'Drag to resize'),
 		});
 	}
 
@@ -564,10 +595,10 @@
 		});
 		const $tabs = $('<span/>', { class: 'rc-text-viewer-md-tabs' });
 		const $actions = $('<span/>', { class: 'rc-text-viewer-md-actions' });
-		const $expandButton = createIconButton('expand', 'fa-solid fa-arrows-left-right', 'Expand to row width');
-		const $fullscreenButton = createIconButton('fullscreen', 'fa-solid fa-maximize', 'Fullscreen');
-		const $collapseButton = createIconButton('collapse', 'fa-solid fa-down-left-and-up-right-to-center', 'Collapse');
-		const $themeButton = createIconButton('toggle-theme', 'fa-solid fa-moon', 'Switch to dark mode');
+		const $expandButton = createIconButton('expand', 'fa-solid fa-arrows-left-right', getString('button_expand', 'Expand to row width'));
+		const $fullscreenButton = createIconButton('fullscreen', 'fa-solid fa-maximize', getString('button_fullscreen', 'Fullscreen'));
+		const $collapseButton = createIconButton('collapse', 'fa-solid fa-down-left-and-up-right-to-center', getString('button_collapse', 'Collapse'));
+		const $themeButton = createIconButton('toggle-theme', 'fa-solid fa-moon', getString('button_switch_dark', 'Switch to dark mode'));
 		if (!canExpandToRowWidth) {
 			$expandButton.addClass('rc-text-viewer-md-action--unavailable');
 		}
@@ -1169,8 +1200,8 @@
 		});
 		const $tabs = $('<span/>', { class: 'rc-text-viewer-md-tabs' });
 		const $actions = $('<span/>', { class: 'rc-text-viewer-md-actions' });
-		const $themeButton = createIconButton('toggle-theme', 'fa-solid fa-moon', 'Switch to dark mode');
-		const $closeButton = createIconButton('file-close', 'fa-solid fa-xmark', 'Close');
+		const $themeButton = createIconButton('toggle-theme', 'fa-solid fa-moon', getString('button_switch_dark', 'Switch to dark mode'));
+		const $closeButton = createIconButton('file-close', 'fa-solid fa-xmark', getString('button_close', 'Close'));
 		$actions.append($themeButton, $closeButton);
 		$toolbar.append($tabs, $actions);
 		return {
@@ -1249,8 +1280,8 @@
 
 		ensureFileViewLink(controller);
 		controller.$viewLink
-			.attr('title', 'View ' + getModeLabel(info.mode) + ' file')
-			.attr('aria-label', 'View ' + info.filename)
+			.attr('title', formatString('title_view_file', 'View {mode} file', { mode: getModeLabel(info.mode) }))
+			.attr('aria-label', formatString('aria_view_file', 'View {filename}', { filename: info.filename }))
 			.data('rcTextViewerFileInfo', info);
 		if (controller.isOpen && !isSameFileInfo(controller.fileInfo, info)) {
 			closeFileViewer(controller);
@@ -1279,7 +1310,7 @@
 		});
 		controller.$viewLink.append(
 			$('<i/>', { class: 'fa-solid fa-eye me-1', 'aria-hidden': 'true' }),
-			$('<span/>', { text: 'View' })
+			$('<span/>', { text: getString('button_view', 'View') })
 		);
 		controller.$viewLink.on('click', function (ev) {
 			ev.preventDefault();
@@ -1288,7 +1319,7 @@
 		if ($.trim(controller.$linkArea.text()) !== '') {
 			controller.$viewSeparator = $('<span/>', {
 				class: 'rc-text-viewer-file-view-separator d-print-none',
-				text: 'or',
+				text: getString('label_or', 'or'),
 			});
 			controller.$linkArea.append(controller.$viewSeparator);
 		}
@@ -1582,7 +1613,7 @@
 	function fetchFileViewerContent(controller, info) {
 		const jsmo = getJavascriptModuleObject();
 		if (!jsmo) {
-			return Promise.reject(new Error('The module AJAX object is unavailable.'));
+			return Promise.reject(new Error(getString('error_ajax_unavailable', 'The module AJAX object is unavailable.')));
 		}
 		return jsmo.ajax(AJAX_GET_FILE_CONTENT, {
 			docIdHash: info.docIdHash,
@@ -1598,9 +1629,9 @@
 				return response.content;
 			}
 			if (response && response.ok === false) {
-				return rejectFileViewerResponse(response.error || 'This file is not currently available for viewing.');
+				return rejectFileViewerResponse(response.error || getString('error_file_unavailable', 'This file is not currently available for viewing.'));
 			}
-			return rejectFileViewerResponse('The file preview response was not recognized.');
+			return rejectFileViewerResponse(getString('error_file_preview_response', 'The file preview response was not recognized.'));
 		});
 	}
 
@@ -1621,9 +1652,9 @@
 	 * @returns {void}
 	 */
 	function showFileViewerErrorDialog(message) {
-		const safeMessage = $('<div class="red"></div>').text(message || 'Unable to load file.');
+		const safeMessage = $('<div class="red"></div>').text(message || getString('error_file_preview_unavailable', 'Unable to load file.'));
 		if (typeof global.simpleDialog === 'function') {
-			global.simpleDialog(safeMessage, 'File preview unavailable');
+			global.simpleDialog(safeMessage, getString('title_file_preview_unavailable', 'File preview unavailable'));
 			return;
 		}
 		LOGGER.warn('File preview unavailable', message);
@@ -1714,9 +1745,9 @@
 	function setFileViewerLoading(controller) {
 		controller.$status.empty();
 		controller.$viewer.removeClass('rc-text-viewer--invalid');
-		controller.$previewContent.html($('<p/>').text('Loading...'));
+		controller.$previewContent.html($('<p/>').text(getString('status_loading', 'Loading...')));
 		if (controller.editor) {
-			controller.editor.setValue('Loading...', -1);
+			controller.editor.setValue(getString('status_loading', 'Loading...'), -1);
 		}
 	}
 
@@ -1728,7 +1759,7 @@
 	 * @returns {void}
 	 */
 	function setFileViewerError(controller, error) {
-		const message = error && error.message ? error.message : String(error || 'Unable to load file.');
+		const message = error && error.message ? error.message : String(error || getString('error_file_preview_unavailable', 'Unable to load file.'));
 		closeFileViewer(controller);
 		showFileViewerErrorDialog(message);
 		LOGGER.warn(`File viewer load failed for field '${controller.fieldName}'.`, error);
@@ -1748,15 +1779,17 @@
 			return;
 		}
 		if (formatted.ok) {
+			const title = formatString('status_valid', 'Valid {mode}', { mode: getModeLabel(controller.currentFileMode) });
 			controller.$status
-				.attr('title', 'Valid ' + getModeLabel(controller.currentFileMode))
-				.attr('aria-label', 'Valid ' + getModeLabel(controller.currentFileMode))
+				.attr('title', title)
+				.attr('aria-label', title)
 				.html($('<i/>', { class: 'fa-solid fa-check text-muted rc-text-viewer-status__valid', 'aria-hidden': 'true' }));
 			return;
 		}
+		const title = formatString('status_invalid', 'Invalid {mode}: {error}', { mode: getModeLabel(controller.currentFileMode), error: formatted.error });
 		controller.$status
-			.attr('title', 'Invalid ' + getModeLabel(controller.currentFileMode) + ': ' + formatted.error)
-			.attr('aria-label', 'Invalid ' + getModeLabel(controller.currentFileMode) + ': ' + formatted.error)
+			.attr('title', title)
+			.attr('aria-label', title)
 			.html($('<i/>', { class: 'fa-solid fa-triangle-exclamation text-warning rc-text-viewer-status__invalid', 'aria-hidden': 'true' }));
 	}
 
@@ -2873,7 +2906,7 @@
 		const doc = parser.parseFromString(String(raw || ''), 'application/xml');
 		const parseError = doc.getElementsByTagName('parsererror')[0];
 		if (parseError) {
-			return { ok: false, empty: false, text: raw, error: parseError.textContent || 'XML parse error' };
+			return { ok: false, empty: false, text: raw, error: parseError.textContent || getString('error_xml_parse', 'XML parse error') };
 		}
 
 		const serialized = new XMLSerializer().serializeToString(doc);
@@ -3009,15 +3042,17 @@
 			return;
 		}
 		if (formatted.ok) {
+			const title = formatString('status_valid', 'Valid {mode}', { mode: controller.modeLabel });
 			controller.$status
-				.attr('title', 'Valid ' + controller.modeLabel)
-				.attr('aria-label', 'Valid ' + controller.modeLabel)
+				.attr('title', title)
+				.attr('aria-label', title)
 				.html($('<i/>', { class: 'fa-solid fa-check text-muted rc-text-viewer-status__valid', 'aria-hidden': 'true' }));
 			return;
 		}
+		const title = formatString('status_invalid', 'Invalid {mode}: {error}', { mode: controller.modeLabel, error: formatted.error });
 		controller.$status
-			.attr('title', 'Invalid ' + controller.modeLabel + ': ' + formatted.error)
-			.attr('aria-label', 'Invalid ' + controller.modeLabel + ': ' + formatted.error)
+			.attr('title', title)
+			.attr('aria-label', title)
 			.html($('<i/>', { class: 'fa-solid fa-triangle-exclamation text-warning rc-text-viewer-status__invalid', 'aria-hidden': 'true' }));
 	}
 
@@ -3082,6 +3117,30 @@
 				r: 'R',
 				xml: 'XML',
 				yaml: 'YAML',
+			},
+			strings: {
+				display_editable: 'Editable',
+				display_readonly: 'Readonly',
+				button_close: 'Close',
+				button_collapse: 'Collapse',
+				button_expand: 'Expand to row width',
+				button_fullscreen: 'Fullscreen',
+				button_switch_dark: 'Switch to dark mode',
+				button_switch_light: 'Switch to light mode',
+				button_view: 'View',
+				aria_view_file: 'View {filename}',
+				error_ajax_unavailable: 'The module AJAX object is unavailable.',
+				error_file_preview_response: 'The file preview response was not recognized.',
+				error_file_preview_unavailable: 'Unable to load file.',
+				error_file_unavailable: 'This file is not currently available for viewing.',
+				error_xml_parse: 'XML parse error',
+				label_or: 'or',
+				status_loading: 'Loading...',
+				status_invalid: 'Invalid {mode}: {error}',
+				status_valid: 'Valid {mode}',
+				title_file_preview_unavailable: 'File preview unavailable',
+				title_resize: 'Drag to resize',
+				title_view_file: 'View {mode} file',
 			},
 			themePreferences: {
 				text: THEME_LIGHT,

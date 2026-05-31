@@ -1,7 +1,7 @@
 {
 	"name": "Enhanced Text Fields",
 	"namespace": "DE\\RUB\\SEG\\EnhancedTextFieldsExternalModule",
-	"description": "Enhances REDCap text fields with JSON and Markdown editing, validation, formatting, and preview tools.",
+	"description": "Enhances REDCap text, notes, and file upload fields with structured text editors and previews.",
 	"tt_description": "module_desc",
 	"documentation": "README.md",
 	"tt_documentation": "module_docs",
@@ -22,37 +22,37 @@
 		{
 			"tag": "@ENHANCED-TEXT-JSON",
 			"description": true,
-			"tt_description": "desc_at_plain"
+			"tt_description": "desc_at_json"
 		},
 		{
 			"tag": "@ENHANCED-TEXT-MARKDOWN",
 			"description": true,
-			"tt_description": "desc_at_plain"
+			"tt_description": "desc_at_markdown"
 		},
 		{
 			"tag": "@ENHANCED-TEXT-CSS",
 			"description": true,
-			"tt_description": "desc_at_plain"
+			"tt_description": "desc_at_css"
 		},
 		{
 			"tag": "@ENHANCED-TEXT-INI",
 			"description": true,
-			"tt_description": "desc_at_plain"
+			"tt_description": "desc_at_ini"
 		},
 		{
 			"tag": "@ENHANCED-TEXT-R",
 			"description": true,
-			"tt_description": "desc_at_plain"
+			"tt_description": "desc_at_r"
 		},
 		{
 			"tag": "@ENHANCED-TEXT-XML",
 			"description": true,
-			"tt_description": "desc_at_plain"
+			"tt_description": "desc_at_xml"
 		},
 		{
 			"tag": "@ENHANCED-TEXT-YAML",
 			"description": true,
-			"tt_description": "desc_at_plain"
+			"tt_description": "desc_at_yaml"
 		}
 	],
 	"project-settings": [
