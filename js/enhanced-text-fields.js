@@ -599,7 +599,7 @@
 		const $expandButton = createIconButton('expand', 'fa-regular fa-square-caret-left', getString('button_expand', 'Expand to row width'));
 		const $fullscreenButton = createIconButton('fullscreen', 'fa-regular fa-square-caret-up', getString('button_fullscreen', 'Fullscreen'));
 		const $collapseButton = createIconButton('collapse', 'fa-solid fa-close', getString('button_collapse', 'Collapse'));
-		const $themeButton = createIconButton('toggle-theme', 'fa-solid fa-moon', getString('button_switch_dark', 'Switch to dark mode'));
+		const $themeButton = createIconButton('toggle-theme', 'fa-solid fa-moon', getString('button_switch_dark', 'Switch to dark mode'), 'fs10');
 		if (!canExpandToRowWidth) {
 			$expandButton.addClass('rc-text-viewer-md-action--unavailable');
 		}
@@ -1023,6 +1023,7 @@
 		const fieldName = field.name;
 		const spec = getEnhancedTextSpec($control, field, mode);
 		const toolbarParts = createToolbarParts(fieldName, field.rowConfig === 'split');
+		spec.$themeButton = toolbarParts.$themeButton;
 		const $editability = createEditStateIndicator(!!field.readonly);
 		const $status = spec.status ? $('<span/>', { class: 'rc-text-viewer-status', 'aria-live': 'polite' }) : $();
 		const $viewer = $('<div/>', {
@@ -1201,7 +1202,7 @@
 		});
 		const $tabs = $('<span/>', { class: 'rc-text-viewer-md-tabs' });
 		const $actions = $('<span/>', { class: 'rc-text-viewer-md-actions' });
-		const $themeButton = createIconButton('toggle-theme', 'fa-solid fa-moon', getString('button_switch_dark', 'Switch to dark mode'));
+		const $themeButton = createIconButton('toggle-theme', 'fa-solid fa-moon', getString('button_switch_dark', 'Switch to dark mode'), 'fs10');
 		const $closeButton = createIconButton('file-close', 'fa-solid fa-xmark', getString('button_close', 'Close'));
 		$actions.append($themeButton, $closeButton);
 		$toolbar.append($tabs, $actions);
@@ -1518,7 +1519,7 @@
 	function configureFileViewerTabs(controller, mode) {
 		const tabs = mode === VIEW_MARKDOWN ? [VIEW_MARKDOWN, VIEW_HTML] : [mode];
 		const tabItems = tabs.map(function (tabMode) {
-			return createModeTab(tabMode, getModeLabel(tabMode));
+			return createThemeableModeTab(tabMode, getModeLabel(tabMode), mode, controller.$themeButton);
 		});
 		controller.$tabs.empty();
 		controller.$tabs.append(createEditStateIndicator(true));
@@ -1805,7 +1806,7 @@
 	 */
 	function appendControllerTabs($tabs, $editability, spec, $status) {
 		const tabItems = spec.tabs.map(function (tabMode) {
-			return createModeTab(tabMode, getModeLabel(tabMode));
+			return createThemeableModeTab(tabMode, getModeLabel(tabMode), spec.mode, spec.$themeButton);
 		});
 		$tabs.append($editability);
 		if (spec.editorOnly && tabItems.length === 1) {
@@ -1817,6 +1818,23 @@
 		if ($status && $status.length) {
 			$tabs.append($status);
 		}
+	}
+
+	/**
+	 * Builds a mode tab and, when applicable, places the theme toggle immediately after it.
+	 *
+	 * @param {string} tabMode Mode value for this tab.
+	 * @param {string} label Visible tab label.
+	 * @param {string} themeMode Mode that supports theme switching.
+	 * @param {jQuery} $themeButton Theme toggle button.
+	 * @returns {jQuery}
+	 */
+	function createThemeableModeTab(tabMode, label, themeMode, $themeButton) {
+		const $tab = createModeTab(tabMode, label);
+		if (!$themeButton || !$themeButton.length || tabMode !== themeMode) {
+			return $tab;
+		}
+		return $('<span/>', { class: 'rc-text-viewer-md-tab-group' }).append($tab, $themeButton);
 	}
 
 	/**

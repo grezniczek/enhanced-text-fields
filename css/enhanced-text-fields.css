@@ -201,6 +201,13 @@
 	border-bottom: 1px solid #315b7d;
 }
 
+.rc-text-viewer-md-tab-group {
+	align-items: center;
+	display: inline-flex;
+	gap: 2px;
+	white-space: nowrap;
+}
+
 .rc-text-viewer-md-tab-separator {
 	color: #a1a1aa;
 }
