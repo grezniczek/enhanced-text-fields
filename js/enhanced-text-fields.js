@@ -599,7 +599,7 @@
 		const $expandButton = createIconButton('expand', 'fa-regular fa-square-caret-left', getString('button_expand', 'Expand to row width'));
 		const $fullscreenButton = createIconButton('fullscreen', 'fa-regular fa-square-caret-up', getString('button_fullscreen', 'Fullscreen'));
 		const $collapseButton = createIconButton('collapse', 'fa-solid fa-close', getString('button_collapse', 'Collapse'));
-		const $themeButton = createIconButton('toggle-theme', 'fa-solid fa-moon', getString('button_switch_dark', 'Switch to dark mode'), 'me-2');
+		const $themeButton = createIconButton('toggle-theme', 'fa-solid fa-moon', getString('button_switch_dark', 'Switch to dark mode'));
 		if (!canExpandToRowWidth) {
 			$expandButton.addClass('rc-text-viewer-md-action--unavailable');
 		}
