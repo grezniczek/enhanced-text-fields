@@ -2,14 +2,9 @@
 	"name": "Enhanced Text Fields",
 	"namespace": "DE\\RUB\\SEG\\EnhancedTextFieldsExternalModule",
 	"description": "Enhances REDCap text fields with JSON and Markdown editing, validation, formatting, and preview tools.",
+	"tt_description": "module_desc",
 	"documentation": "README.md",
-	"auth-ajax-actions": [
-		"save-theme-preference",
-		"get-file-content"
-	],
-	"no-auth-ajax-actions": [
-		"get-file-content"
-	],
+	"tt_documentation": "module_docs",
 	"authors": [
 		{
 			"name": "Günther Rezniczek",
@@ -21,47 +16,64 @@
 	"action-tags": [
 		{
 			"tag": "@ENHANCED-TEXT-PLAIN",
-			"description": "Plain text editor for Notes fields. Params: initial, height, scope, text-only. See documentation."
+			"description": true,
+			"tt_description": "desc_at_plain"
 		},
 		{
 			"tag": "@ENHANCED-TEXT-JSON",
-			"description": "JSON editor for text/Notes fields. Params: initial, height, format, indent, scope, json-only. See documentation."
+			"description": true,
+			"tt_description": "desc_at_plain"
 		},
 		{
 			"tag": "@ENHANCED-TEXT-MARKDOWN",
-			"description": "Markdown editor and HTML preview for Notes fields. Params: initial, height, scope, markdown-only. See documentation."
+			"description": true,
+			"tt_description": "desc_at_plain"
 		},
 		{
 			"tag": "@ENHANCED-TEXT-CSS",
-			"description": "CSS editor for text/Notes fields. Params: initial, height, format, indent, scope, css-only. See documentation."
+			"description": true,
+			"tt_description": "desc_at_plain"
 		},
 		{
 			"tag": "@ENHANCED-TEXT-INI",
-			"description": "INI editor for Notes fields. Params: initial, height, scope, ini-only. See documentation."
+			"description": true,
+			"tt_description": "desc_at_plain"
 		},
 		{
 			"tag": "@ENHANCED-TEXT-R",
-			"description": "R editor for Notes fields. Params: initial, height, scope, r-only. See documentation."
+			"description": true,
+			"tt_description": "desc_at_plain"
 		},
 		{
 			"tag": "@ENHANCED-TEXT-XML",
-			"description": "XML editor for text/Notes fields. Params: initial, height, format, indent, scope, xml-only. See documentation."
+			"description": true,
+			"tt_description": "desc_at_plain"
 		},
 		{
 			"tag": "@ENHANCED-TEXT-YAML",
-			"description": "YAML editor for Notes fields. Params: initial, height, scope, yaml-only. See documentation."
+			"description": true,
+			"tt_description": "desc_at_plain"
 		}
 	],
 	"project-settings": [
 		{
 			"key": "javascript-debug",
 			"name": "Output debug information to the browser console",
+			"tt_name": "conf_debug",
 			"type": "checkbox"
 		},
 		{
 			"key": "max-file-size",
 			"name": "Maximum file size that can be previewed (bytes, KB, or MB; blank = 10MB; 0 = unlimited)",
+			"tt_name": "conf_maxfilesize",
 			"type": "text"
 		}
+	],
+	"auth-ajax-actions": [
+		"save-theme-preference",
+		"get-file-content"
+	],
+	"no-auth-ajax-actions": [
+		"get-file-content"
 	]
 }

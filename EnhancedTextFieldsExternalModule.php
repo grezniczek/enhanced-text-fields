@@ -143,6 +143,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			'fields' => $enhanced_fields,
 			'labels' => $this->getModeLabels(),
 			'ace' => $this->getAceConfig(),
+			'strings' => $this->getStrings(),
 		);
 		$config_json = json_encode($config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
 
@@ -161,11 +162,27 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 
 		// Inject the JSMO and the module initialization code.
 		$this->initializeJavascriptModuleObject();
-?>
-		<script type="text/javascript">
-			DE_RUB_SEG_EnhancedTextFieldsEM.init(<?= $config_json ?>);
-		</script>
-<?php
+
+		print \RCView::script(<<<JS
+			DE_RUB_SEG_EnhancedTextFieldsEM.init($config_json);
+		JS);
+	}
+
+	/**
+	 * Gets the display strings used in the client
+	 * @return Array<string,string>  
+	 */
+	private function getStrings() {
+		// TODO: Add strings
+		$strings = [
+			'display_01' => $this->framework->tt('display_01'),
+			'display_02' => $this->framework->tt('display_02'),
+
+		];
+
+
+
+		return $strings;
 	}
 
 

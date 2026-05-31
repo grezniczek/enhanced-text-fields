@@ -178,8 +178,12 @@
 	function createEditStateIndicator(readonly) {
 		return $('<span/>', {
 			class: 'rc-text-viewer-edit-state' + (readonly ? ' rc-text-viewer-edit-state--readonly' : ''),
-			title: readonly ? 'Readonly' : 'Editable',
-			'aria-label': readonly ? 'Readonly' : 'Editable',
+			title: readonly 
+				? state.config.strings.display_01 // Readonly
+				: state.config.strings.display_02, // Editable
+			'aria-label': readonly 
+				? state.config.strings.display_01 // Readonly
+				: state.config.strings.display_02, // Editable
 		}).append(
 			$('<i/>', { class: 'fa-solid fa-pencil rc-text-viewer-edit-state__pencil', 'aria-hidden': 'true' }),
 			$('<i/>', { class: 'fa-solid fa-slash rc-text-viewer-edit-state__slash', 'aria-hidden': 'true' })
