@@ -647,8 +647,8 @@
 		return $('<button/>', {
 			type: 'button',
 			class: 'rc-text-viewer__icon-button rc-text-viewer-md-format-button',
-			title: getString('label_format', 'Format'),
-			'aria-label': getString('label_format', 'Format'),
+			title: getString('button_switch_format', 'Switch format'),
+			'aria-label': getString('button_switch_format', 'Switch format'),
 			'data-rc-text-viewer-format-popover': '1',
 			'data-rc-text-viewer-selected-mode': selectedMode,
 		}).append($('<i/>', { class: 'fa-solid fa-arrow-right-arrow-left', 'aria-hidden': 'true' }));
@@ -1153,6 +1153,7 @@
 			placement: 'bottom',
 			trigger: 'click',
 			sanitize: false,
+			title: '',
 		};
 		if (global.bootstrap && global.bootstrap.Popover) {
 			controller.formatPopover = new global.bootstrap.Popover($button[0], options);
@@ -1161,6 +1162,7 @@
 			$button.popover(options);
 			controller.formatPopover = { type: 'jquery' };
 		}
+		$button.attr('title', getString('button_switch_format', 'Switch format'));
 		$(document).on('click' + controller.eventNamespace, FORMAT_RADIO_SELECTOR, function () {
 			const mode = $(this).val();
 			const activeController = $button.data('rcTextViewerController');
@@ -3565,6 +3567,7 @@
 				button_collapse: 'Collapse',
 				button_expand: 'Expand to row width',
 				button_fullscreen: 'Fullscreen',
+				button_switch_format: 'Switch format',
 				button_switch_dark: 'Switch to dark mode',
 				button_switch_light: 'Switch to light mode',
 				button_view: 'View',

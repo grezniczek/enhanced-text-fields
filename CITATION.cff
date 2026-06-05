@@ -17,11 +17,10 @@ keywords:
   - "data entry"
 license: "MIT"
 version: "1.0.0"
-
-Release/DOI preparation:
 date-released: "2026-06-05"
 doi: "10.5281/zenodo.20555867"
-repository-code: "https://github.com/OWNER/REPOSITORY"
+repository-code: "https://github.com/grezniczek/enhanced-text-fields"
+url: "https://doi.org/10.5281/zenodo.20555867"
 identifiers:
   - type: doi
     value: "10.5281/zenodo.20555867"
@@ -36,3 +35,6 @@ preferred-citation:
       email: "guenther.rezniczek@rub.de"
       affiliation: "St. Elisabethgruppe GmbH - Marien Hospital Herne | Klinikum der Ruhr-Universität Bochum"
   version: "1.0.0"
+  date-released: "2026-06-05"
+  doi: "10.5281/zenodo.20555867"
+  repository-code: "https://github.com/grezniczek/enhanced-text-fields"

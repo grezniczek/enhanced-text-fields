@@ -10,6 +10,7 @@ The original REDCap field remains the canonical storage location. For editable t
 
 - Edit REDCap JSON, XML, or CSS values without leaving the data entry form.
 - Render Markdown Notes fields as HTML while retaining the raw Markdown in REDCap.
+- Allow a single Notes field to switch between multiple configured structured-text formats.
 - Give users fullscreen editing or preview space for long structured text.
 - Preview uploaded `.json`, `.md`, `.xml`, `.yaml`, `.ini`, `.r`, `.css`, or plain-text files without downloading them first.
 - Keep REDCap storage compact for text boxes while showing readable formatting in the enhanced editor.
@@ -54,7 +55,7 @@ Add one or more enhanced-text action tags to a REDCap field.
 
 Validated REDCap text boxes are skipped. File upload fields are always view-only; signature-style file fields are skipped.
 
-For text boxes and Notes fields, use one enhanced-text action tag per field. If multiple enhanced-text tags are present on an editable field, the module chooses the first supported enhancement in its internal mode order.
+For text boxes and Notes fields, one or more enhanced-text action tags may be added to the same field. When multiple formats are configured, the toolbar shows **Raw** plus the active enhanced mode. A format-switch button opens a popover with the configured modes. If the field already contains data when the page loads, the module tries to detect the content type among the configured modes and uses that as the initial enhanced format; otherwise it falls back to explicit `initial:*` settings or the configured action-tag order.
 
 For file upload fields, multiple enhanced-text action tags are explicitly supported. The module checks the uploaded file extension and enables the matching viewer. Supported extensions are:
 
@@ -74,6 +75,7 @@ For file upload fields, multiple enhanced-text action tags are explicitly suppor
 - `@ENHANCED-TEXT-CSS="initial:css, format:pretty"`
 - `@ENHANCED-TEXT-XML="xml-only, indent:tab, scope:all"`
 - `@ENHANCED-TEXT-YAML="initial:yaml"`
+- On a Notes field with selectable formats: `@ENHANCED-TEXT-JSON @ENHANCED-TEXT-XML @ENHANCED-TEXT-YAML`
 - On a file upload field: `@ENHANCED-TEXT-JSON @ENHANCED-TEXT-MARKDOWN @ENHANCED-TEXT-YAML`
 
 ## Parameters
@@ -97,6 +99,8 @@ For file upload fields, `scope` controls whether the preview link is injected on
 For text boxes and Notes fields, the REDCap input or textarea remains the actual storage field. The enhanced editor syncs back only after the user edits enhanced content, which avoids false unsaved-change prompts.
 
 The Raw tab shows REDCap's original control. Switching from Raw to an enhanced mode pulls the latest raw value into the editor or preview. Raw typing is not mirrored live into Ace until the user switches modes.
+
+When multiple enhanced formats are configured on the same editable field, the active enhanced tab label reflects the selected format. The adjacent format-switch button opens a radio-list popover. Selecting a different format rebuilds the enhanced editor for that mode while preserving the underlying REDCap value. Selecting the current format while Raw is active switches from Raw into that enhanced editor; for Markdown, selecting Markdown from the HTML preview switches into the Markdown editor.
 
 Expanded and fullscreen layouts temporarily move the toolbar and active panel, then restore them when collapsed. Light/dark theme preference is available in expanded and fullscreen toolbars and is persisted per user and per enhancement type on authenticated data entry pages.
 
@@ -129,4 +133,3 @@ Enhanced Text Fields uses bundled third-party browser libraries:
 - highlight.js for Markdown code-block highlighting.
 
 REDCap is developed and maintained by Vanderbilt University. This module is an independent REDCap External Module and is not part of REDCap core.
-

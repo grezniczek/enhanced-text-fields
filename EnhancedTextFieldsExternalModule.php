@@ -196,6 +196,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			'button_collapse',
 			'button_expand',
 			'button_fullscreen',
+			'button_switch_format',
 			'button_switch_dark',
 			'button_switch_light',
 			'button_view',
