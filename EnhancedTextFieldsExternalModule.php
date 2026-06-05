@@ -155,7 +155,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			$inject->css('css/highlight-theme.css');
 			$inject->js('js/marked.min.js');
 			$inject->js('js/highlight.min.js');
-			$inject->js('js/sir-hljs-languages.js');
+			$inject->js('js/hljs-languages.js');
 		}
 		$inject->js('js/ConsoleDebugLogger.js');
 		$inject->js('js/enhanced-text-fields.js');

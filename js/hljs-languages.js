@@ -1,7 +1,7 @@
-/* sir-hljs-languages.js */
+/* hljs-languages.js */
 (function () {
   if (typeof hljs === 'undefined') {
-    console.warn('[SIR] highlight.js not loaded before sir-hljs-languages.js');
+    console.warn('highlight.js not loaded before hljs-languages.js');
     return;
   }
 
