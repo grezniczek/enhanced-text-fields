@@ -29,6 +29,8 @@ Install this module like any other REDCap External Module:
 
 The module requires External Module Framework version 16 or newer.
 
+See the [CHANGELOG](CHANGELOG.md) for details on changes to this module.
+
 ## Project Configuration
 
 Configure the module from the REDCap External Modules project settings dialog.
