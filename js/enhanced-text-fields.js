@@ -1074,7 +1074,7 @@
 		const $anchor = controller.$anchor;
 		flushEnhancedTextController(controller);
 		destroyEnhancedTextController(controller);
-		createEnhancedTextController($control, field, mode, { $anchor: $anchor });
+		createEnhancedTextController($control, field, mode, { $anchor: $anchor, initialMode: mode });
 	}
 
 	/**
@@ -1161,15 +1161,32 @@
 			$button.popover(options);
 			controller.formatPopover = { type: 'jquery' };
 		}
-		$(document).on('change' + controller.eventNamespace, FORMAT_RADIO_SELECTOR, function () {
+		$(document).on('click' + controller.eventNamespace, FORMAT_RADIO_SELECTOR, function () {
 			const mode = $(this).val();
 			const activeController = $button.data('rcTextViewerController');
 			const fieldName = $(this).closest('.rc-text-viewer-format-popover').attr('data-rc-text-viewer-field') || '';
-			if (activeController && fieldName === activeController.fieldName && mode && mode !== activeController.enhancementMode) {
-				hideFormatPopover(activeController);
+			if (!activeController || fieldName !== activeController.fieldName || !mode) {
+				return;
+			}
+			if (mode !== activeController.enhancementMode) {
 				switchEnhancedTextMode(activeController, mode);
+				return;
+			}
+			hideFormatPopover(activeController);
+			if (isInactiveFormatView(activeController)) {
+				activeController.setMode(mode);
 			}
 		});
+	}
+
+	/**
+	 * Returns whether the current view is outside the selected editor format.
+	 *
+	 * @param {object} controller Text viewer controller.
+	 * @returns {boolean}
+	 */
+	function isInactiveFormatView(controller) {
+		return controller.mode === VIEW_RAW || (controller.enhancementMode === VIEW_MARKDOWN && controller.mode === VIEW_HTML);
 	}
 
 	/**
@@ -1273,6 +1290,9 @@
 		const fieldName = field.name;
 		options = options || {};
 		const spec = getEnhancedTextSpec($control, field, mode);
+		if (options.initialMode === mode || (mode === VIEW_MARKDOWN && options.initialMode === VIEW_HTML)) {
+			spec.initialMode = options.initialMode;
+		}
 		const toolbarParts = createToolbarParts(fieldName, field.rowConfig === 'split');
 		spec.$themeButton = toolbarParts.$themeButton;
 		const $editability = createEditStateIndicator(!!field.readonly);
