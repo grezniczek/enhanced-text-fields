@@ -1090,9 +1090,26 @@
 		const field = controller.field;
 		const $control = controller.$control;
 		const $anchor = controller.$anchor;
+		const restoreLayout = controller.layout;
+		if (restoreLayout !== LAYOUT_NORMAL) {
+			rememberTextViewerHeight(controller);
+		}
+		const heights = {
+			normalHeight: controller.normalHeight,
+			expandedHeight: controller.expandedHeight,
+			fullscreenHeight: controller.fullscreenHeight,
+			userHeight: controller.userHeight,
+		};
 		flushEnhancedTextController(controller);
 		destroyEnhancedTextController(controller);
-		createEnhancedTextController($control, field, mode, { $anchor: $anchor, initialMode: mode });
+		const nextController = createEnhancedTextController($control, field, mode, { $anchor: $anchor, initialMode: mode });
+		$.extend(nextController, heights);
+		if (restoreLayout === LAYOUT_EXPANDED) {
+			expandTextViewer(nextController);
+		}
+		if (restoreLayout === LAYOUT_FULLSCREEN) {
+			fullscreenTextViewer(nextController);
+		}
 	}
 
 	/**
@@ -1157,6 +1174,7 @@
 	 * @returns {void}
 	 */
 	function initFormatPopover(controller) {
+		disposeFormatPopover(controller);
 		const $button = controller.$toolbar.find(FORMAT_POPOVER_BUTTON_SELECTOR).first();
 		if (!$button.length) {
 			return;
@@ -1166,7 +1184,7 @@
 		const options = {
 			html: true,
 			content: createFormatPopoverContent(controller.field, controller.enhancementMode),
-			container: 'body',
+			container: getFormatPopoverContainer(controller),
 			customClass: 'rc-text-viewer-format-popover-container',
 			placement: 'bottom',
 			trigger: 'click',
@@ -1197,6 +1215,19 @@
 				activeController.setMode(mode);
 			}
 		});
+	}
+
+	/**
+	 * Returns the best popover container for the controller's current layout.
+	 *
+	 * @param {object} controller Text viewer controller.
+	 * @returns {string|Element}
+	 */
+	function getFormatPopoverContainer(controller) {
+		if (controller && controller.layout === LAYOUT_FULLSCREEN && controller.$toolbar && controller.$toolbar.length) {
+			return controller.$toolbar[0];
+		}
+		return 'body';
 	}
 
 	/**
@@ -1894,7 +1925,7 @@
 		const options = {
 			html: true,
 			content: createFormatPopoverContentForModes({ name: controller.fieldName }, controller.currentFileMode, modes),
-			container: 'body',
+			container: controller.$toolbar && controller.$toolbar.length ? controller.$toolbar[0] : 'body',
 			customClass: 'rc-text-viewer-format-popover-container',
 			placement: 'bottom',
 			trigger: 'click',
@@ -2806,6 +2837,7 @@
 		controller.$toolbar.addClass('rc-text-viewer-md-toolbar--expanded');
 		$panel.addClass('rc-text-viewer-md-preview--expanded');
 		resizeTextViewerEditor(controller);
+		initFormatPopover(controller);
 		controller.updateToolbar();
 	}
 
@@ -2847,6 +2879,7 @@
 		$panel.removeClass('rc-text-viewer-md-preview--expanded');
 		$panel.addClass('rc-text-viewer-md-preview--fullscreen');
 		resizeTextViewerEditor(controller);
+		initFormatPopover(controller);
 		controller.updateToolbar();
 	}
 
@@ -2866,6 +2899,7 @@
 		controller.syncSize(false);
 		controller.restoreVisibleMode();
 		resizeTextViewerEditor(controller);
+		initFormatPopover(controller);
 		controller.updateToolbar();
 	}
 

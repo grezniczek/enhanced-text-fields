@@ -166,6 +166,7 @@
 	box-shadow: 0 12px 48px rgba(0, 0, 0, 0.2);
 	left: 16px;
 	margin: 0;
+	overflow: visible;
 	position: fixed;
 	right: 16px;
 	top: 16px;
@@ -208,6 +209,9 @@
 	min-height: 18px;
 	min-width: 18px;
 	font-size: 75%;
+}
+.rc-text-viewer-format-popover-container {
+	z-index: 100002;
 }
 .rc-text-viewer-format-popover-container .popover-header {
 	font-size: 13px;
