@@ -2,7 +2,7 @@
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20555867.svg)](https://doi.org/10.5281/zenodo.20555867)
 
-Enhanced Text Fields is a REDCap External Module for working with structured or formatted text directly inside data entry forms and surveys. It enhances REDCap text boxes, Notes fields, and file upload fields with Ace-backed viewers/editors for JSON, Markdown, CSS, XML, YAML, INI, R, and plain text.
+Enhanced Text Fields is a REDCap External Module for working with structured or formatted text directly inside data entry forms and surveys. It enhances REDCap text boxes, Notes fields, and file upload fields with Ace-backed viewers/editors for JSON, Markdown, CSS, SQL, XML, YAML, INI, R, and plain text.
 
 The original REDCap field remains the canonical storage location. For editable text and Notes fields, the module adds richer editing, preview, formatting, validation, resizing, row expansion, fullscreen mode, and per-user light/dark editor themes. For file upload fields, the module adds a read-only preview link when the uploaded filename matches one of the configured text formats.
 
@@ -12,7 +12,7 @@ The original REDCap field remains the canonical storage location. For editable t
 - Render Markdown Notes fields as HTML while retaining the raw Markdown in REDCap.
 - Allow a single Notes field to switch between multiple configured structured-text formats.
 - Give users fullscreen editing or preview space for long structured text.
-- Preview uploaded `.json`, `.md`, `.xml`, `.yaml`, `.ini`, `.r`, `.css`, or plain-text files without downloading them first.
+- Preview uploaded `.json`, `.md`, `.xml`, `.yaml`, `.ini`, `.r`, `.css`, `.sql`, or plain-text files without downloading them first.
 - Keep REDCap storage compact for text boxes while showing readable formatting in the enhanced editor.
 
 ## Installation
@@ -48,6 +48,7 @@ Add one or more enhanced-text action tags to a REDCap field.
 | `@ENHANCED-TEXT-JSON` | Yes | Yes | Yes | JSON editor/preview with validation and formatting. |
 | `@ENHANCED-TEXT-MARKDOWN` | No | Yes | Yes | Markdown editor plus rendered HTML preview. |
 | `@ENHANCED-TEXT-CSS` | Yes | Yes | Yes | CSS editor/preview with formatting. |
+| `@ENHANCED-TEXT-SQL` | Yes | Yes | Yes | SQL editor/preview with optional dialect highlighting. |
 | `@ENHANCED-TEXT-INI` | No | Yes | Yes | INI editor or file preview. |
 | `@ENHANCED-TEXT-R` | No | Yes | Yes | R editor or file preview. |
 | `@ENHANCED-TEXT-XML` | Yes | Yes | Yes | XML editor/preview with validation and formatting. |
@@ -65,6 +66,7 @@ For file upload fields, multiple enhanced-text action tags are explicitly suppor
 - Markdown: `.md`, `.markdown`
 - Plain text: `.txt`, `.text`, `.log`
 - R: `.r`
+- SQL: `.sql`
 - XML: `.xml`
 - YAML: `.yaml`, `.yml`
 
@@ -73,10 +75,11 @@ For file upload fields, multiple enhanced-text action tags are explicitly suppor
 - `@ENHANCED-TEXT-JSON="initial:json, indent:4"`
 - `@ENHANCED-TEXT-MARKDOWN="initial:html, height:240"`
 - `@ENHANCED-TEXT-CSS="initial:css, format:pretty"`
+- `@ENHANCED-TEXT-SQL="dialect:postgres"`
 - `@ENHANCED-TEXT-XML="xml-only, indent:tab, scope:all"`
 - `@ENHANCED-TEXT-YAML="initial:yaml"`
-- On a Notes field with selectable formats: `@ENHANCED-TEXT-JSON @ENHANCED-TEXT-XML @ENHANCED-TEXT-YAML`
-- On a file upload field: `@ENHANCED-TEXT-JSON @ENHANCED-TEXT-MARKDOWN @ENHANCED-TEXT-YAML`
+- On a Notes field with selectable formats: `@ENHANCED-TEXT-JSON @ENHANCED-TEXT-SQL @ENHANCED-TEXT-XML @ENHANCED-TEXT-YAML`
+- On a file upload field: `@ENHANCED-TEXT-JSON @ENHANCED-TEXT-MARKDOWN @ENHANCED-TEXT-SQL @ENHANCED-TEXT-YAML`
 
 ## Parameters
 
@@ -84,15 +87,16 @@ Action-tag parameters are optional. When provided, use a double-quoted, comma-se
 
 Do not use unquoted or single-quoted parameter strings.
 
-- `initial:*` sets the first visible mode. Use `initial:raw` for the REDCap raw field. Use `initial:markdown`, `initial:json`, `initial:css`, `initial:xml`, `initial:ini`, `initial:r`, `initial:yaml`, or `initial:text` for the corresponding editor. Markdown also supports `initial:html` for its rendered HTML preview. For empty Markdown fields, `initial:html` falls back to Raw.
+- `initial:*` sets the first visible mode. Use `initial:raw` for the REDCap raw field. Use `initial:markdown`, `initial:json`, `initial:css`, `initial:sql`, `initial:mysql`, `initial:mariadb`, `initial:postgres`, `initial:pgsql`, `initial:xml`, `initial:ini`, `initial:r`, `initial:yaml`, or `initial:text` for the corresponding editor. Markdown also supports `initial:html` for its rendered HTML preview. For empty Markdown fields, `initial:html` falls back to Raw.
 - `height:200` sets the initial editor or preview height in pixels.
 - `format:pretty` stores normalized JSON, CSS, or XML with line breaks and indentation when the underlying field supports newlines.
 - `format:compact` stores normalized JSON, CSS, or XML without layout whitespace.
 - `indent:2`, `indent:4`, or `indent:tab` controls pretty indentation for JSON, CSS, and XML. The default is two spaces.
+- `dialect:general`, `dialect:mysql`, `dialect:mariadb`, or `dialect:postgres` selects one SQL dialect for `@ENHANCED-TEXT-SQL`. If omitted or invalid, all SQL dialect viewers are configured and users can switch between SQL, MySQL, MariaDB, and PostgreSQL.
 - `scope:form`, `scope:survey`, or `scope:all` controls where the enhanced control is injected. `scope:form` is the default, so action tags do not affect surveys unless `scope:survey` or `scope:all` is specified.
-- `json-only`, `markdown-only`, `css-only`, `xml-only`, `text-only`, `ini-only`, `r-only`, or `yaml-only` opens the enhanced mode and hides the Raw tab. `editor-only` is accepted as a generic alias for the respective editor modes.
+- `json-only`, `markdown-only`, `css-only`, `sql-only`, `mysql-only`, `mariadb-only`, `pgsql-only`, `xml-only`, `text-only`, `ini-only`, `r-only`, or `yaml-only` opens the enhanced mode and hides the Raw tab. `editor-only` is accepted as a generic alias for the respective editor modes.
 
-For file upload fields, `scope` controls whether the preview link is injected on forms, surveys, or both. File previews are always read-only and do not show a Raw tab. Markdown files show Markdown and HTML tabs; other supported file types show a single read-only Ace view.
+For file upload fields, `scope` controls whether the preview link is injected on forms, surveys, or both. File previews are always read-only and do not show a Raw tab. Markdown files show Markdown and HTML tabs. SQL files show a dialect selector when multiple SQL dialect viewers are configured; other supported file types show a single read-only Ace view.
 
 ## Editing and Preview Behavior
 
@@ -112,7 +116,7 @@ REDCap text boxes cannot store newlines, so JSON, CSS, and XML text boxes always
 
 The JSON editor always normalizes valid JSON layout in the editor itself. The stored value uses the configured `format` for Notes fields and compact storage for text boxes.
 
-Plain text, Markdown, INI, R, and YAML are edited as text and are not normalized by this module.
+Plain text, Markdown, SQL, INI, R, and YAML are edited as text and are not normalized by this module.
 
 There is intentionally no `raw-only` option; omit the action tag when enhanced editing or preview should not be available.
 

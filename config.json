@@ -35,6 +35,11 @@
 			"tt_description": "desc_at_css"
 		},
 		{
+			"tag": "@ENHANCED-TEXT-SQL",
+			"description": true,
+			"tt_description": "desc_at_sql"
+		},
+		{
 			"tag": "@ENHANCED-TEXT-INI",
 			"description": true,
 			"tt_description": "desc_at_ini"

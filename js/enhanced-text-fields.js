@@ -8,6 +8,7 @@
 	const VIEW_MARKDOWN = 'markdown';
 	const VIEW_HTML = 'html';
 	const VIEW_JSON = 'json';
+	const SQL_DIALECT_MODES = ['sql', 'mysql', 'mariadb', 'pgsql'];
 	const THEME_LIGHT = 'light';
 	const THEME_DARK = 'dark';
 	const ACE_THEME_LIGHT = 'github_light_default';
@@ -17,7 +18,11 @@
 		'ini',
 		'json',
 		'markdown',
+		'mariadb',
+		'mysql',
+		'pgsql',
 		'r',
+		'sql',
 		'text',
 		'xml',
 		'yaml',
@@ -45,6 +50,7 @@
 		markdown: 'markdown',
 		md: 'markdown',
 		r: 'r',
+		sql: 'sql',
 		text: 'text',
 		txt: 'text',
 		xml: 'xml',
@@ -663,6 +669,18 @@
 	 */
 	function createFormatPopoverContent(field, selectedMode) {
 		const modes = getConfiguredTextModes(field);
+		return createFormatPopoverContentForModes(field, selectedMode, modes);
+	}
+
+	/**
+	 * Builds the format popover body from a specific mode list.
+	 *
+	 * @param {object} field Field configuration.
+	 * @param {string} selectedMode Currently selected enhancement mode.
+	 * @param {string[]} modes Selectable enhancement modes.
+	 * @returns {string}
+	 */
+	function createFormatPopoverContentForModes(field, selectedMode, modes) {
 		const name = 'rc-text-viewer-format-' + String(field.name || '').replace(/\W/g, '_');
 		const $list = $('<div/>', {
 			class: 'rc-text-viewer-format-popover',
@@ -1448,6 +1466,7 @@
 			$previewContent: $previewContent,
 			$status: $status,
 			editor: null,
+			eventNamespace: '.rcTextViewerFileMode' + String(fieldName).replace(/\W/g, ''),
 			mode: null,
 			currentFileMode: null,
 			themeMode: null,
@@ -1700,11 +1719,27 @@
 	 */
 	function determineFileMode(viewers, filename) {
 		const extension = getFileExtension(filename);
+		if (extension === 'sql') {
+			return getConfiguredSqlModes({ viewers: viewers })[0] || '';
+		}
 		const mode = FILE_EXTENSION_MODES[extension] || '';
 		if (!isSupportedEnhancementMode(mode)) {
 			return '';
 		}
 		return (viewers || []).indexOf(mode) !== -1 ? mode : '';
+	}
+
+	/**
+	 * Returns configured SQL modes for a field in default dialect order.
+	 *
+	 * @param {object} field Field configuration.
+	 * @returns {string[]}
+	 */
+	function getConfiguredSqlModes(field) {
+		const viewers = field.viewers || [];
+		return SQL_DIALECT_MODES.filter(function (mode) {
+			return viewers.indexOf(mode) !== -1;
+		});
 	}
 
 	/**
@@ -1795,6 +1830,9 @@
 	function configureFileViewerTabs(controller, mode) {
 		const tabs = mode === VIEW_MARKDOWN ? [VIEW_MARKDOWN, VIEW_HTML] : [mode];
 		const tabItems = tabs.map(function (tabMode) {
+			if (tabMode === mode && shouldShowFileFormatPopover(controller)) {
+				return createFileFormatModeTab(controller, mode);
+			}
 			return createThemeableModeTab(tabMode, getModeLabel(tabMode), mode, controller.$themeButton);
 		});
 		controller.$tabs.empty();
@@ -1808,6 +1846,148 @@
 		if (mode !== VIEW_MARKDOWN) {
 			controller.$tabs.append(controller.$status);
 		}
+		initFileFormatPopover(controller);
+	}
+
+	/**
+	 * Returns whether the current file viewer should expose SQL dialect switching.
+	 *
+	 * @param {object} controller File viewer controller.
+	 * @returns {boolean}
+	 */
+	function shouldShowFileFormatPopover(controller) {
+		if (!controller || !controller.fileInfo || getFileExtension(controller.fileInfo.filename) !== 'sql') {
+			return false;
+		}
+		return getConfiguredSqlModes(controller.field).length > 1;
+	}
+
+	/**
+	 * Builds the file viewer's selected SQL dialect tab with popover trigger.
+	 *
+	 * @param {object} controller File viewer controller.
+	 * @param {string} selectedMode Currently selected SQL dialect mode.
+	 * @returns {jQuery}
+	 */
+	function createFileFormatModeTab(controller, selectedMode) {
+		return createFormatModeTab(selectedMode, {
+			name: controller.fieldName,
+			viewers: getConfiguredSqlModes(controller.field),
+		}, selectedMode, controller.$themeButton);
+	}
+
+	/**
+	 * Initializes the SQL dialect popover for file previews.
+	 *
+	 * @param {object} controller File viewer controller.
+	 * @returns {void}
+	 */
+	function initFileFormatPopover(controller) {
+		disposeFileFormatPopover(controller);
+		const $button = controller.$toolbar.find(FORMAT_POPOVER_BUTTON_SELECTOR).first();
+		if (!$button.length) {
+			return;
+		}
+		controller.$formatPopoverButton = $button;
+		$button.data('rcTextViewerController', controller);
+		const modes = getConfiguredSqlModes(controller.field);
+		const options = {
+			html: true,
+			content: createFormatPopoverContentForModes({ name: controller.fieldName }, controller.currentFileMode, modes),
+			container: 'body',
+			customClass: 'rc-text-viewer-format-popover-container',
+			placement: 'bottom',
+			trigger: 'click',
+			sanitize: false,
+			title: '',
+		};
+		if (global.bootstrap && global.bootstrap.Popover) {
+			controller.formatPopover = new global.bootstrap.Popover($button[0], options);
+		}
+		else if ($.fn.popover) {
+			$button.popover(options);
+			controller.formatPopover = { type: 'jquery' };
+		}
+		$button.attr('title', getString('button_switch_format', 'Switch format'));
+		$(document).on('click' + controller.eventNamespace, FORMAT_RADIO_SELECTOR, function () {
+			const mode = $(this).val();
+			const activeController = $button.data('rcTextViewerController');
+			const fieldName = $(this).closest('.rc-text-viewer-format-popover').attr('data-rc-text-viewer-field') || '';
+			if (!activeController || fieldName !== activeController.fieldName || !mode) {
+				return;
+			}
+			switchFileViewerSqlMode(activeController, mode);
+		});
+	}
+
+	/**
+	 * Switches an open SQL file preview to another configured dialect mode.
+	 *
+	 * @param {object} controller File viewer controller.
+	 * @param {string} mode Requested SQL dialect mode.
+	 * @returns {void}
+	 */
+	function switchFileViewerSqlMode(controller, mode) {
+		if (!controller || !controller.fileInfo || getConfiguredSqlModes(controller.field).indexOf(mode) === -1 || getFileExtension(controller.fileInfo.filename) !== 'sql') {
+			return;
+		}
+		hideFileFormatPopover(controller);
+		if (mode === controller.currentFileMode) {
+			return;
+		}
+		controller.currentFileMode = mode;
+		controller.themeMode = mode;
+		controller.currentTheme = getThemePreference(mode);
+		controller.mode = mode;
+		ensureFileViewerEditor(controller, mode).then(function () {
+			renderFileViewerContent(controller);
+			configureFileViewerTabs(controller, mode);
+			setFileViewerMode(controller, mode);
+		}).catch(function (e) {
+			setFileViewerError(controller, e);
+		});
+	}
+
+	/**
+	 * Hides the active file format popover.
+	 *
+	 * @param {object} controller File viewer controller.
+	 * @returns {void}
+	 */
+	function hideFileFormatPopover(controller) {
+		if (!controller || !controller.formatPopover) {
+			return;
+		}
+		if (controller.formatPopover.type !== 'jquery' && typeof controller.formatPopover.hide === 'function') {
+			controller.formatPopover.hide();
+			return;
+		}
+		if (controller.$formatPopoverButton && $.fn.popover) {
+			controller.$formatPopoverButton.popover('hide');
+		}
+	}
+
+	/**
+	 * Disposes the file format popover.
+	 *
+	 * @param {object} controller File viewer controller.
+	 * @returns {void}
+	 */
+	function disposeFileFormatPopover(controller) {
+		if (!controller) {
+			return;
+		}
+		$(document).off(controller.eventNamespace);
+		if (!controller.formatPopover) {
+			return;
+		}
+		if (controller.formatPopover.type !== 'jquery' && typeof controller.formatPopover.dispose === 'function') {
+			controller.formatPopover.dispose();
+		}
+		else if (controller.$formatPopoverButton && $.fn.popover) {
+			controller.$formatPopoverButton.popover('destroy');
+		}
+		controller.formatPopover = null;
 	}
 
 	/**
@@ -1840,6 +2020,7 @@
 		if (!controller || !controller.isOpen) {
 			return;
 		}
+		disposeFileFormatPopover(controller);
 		controller.$toolbar.detach();
 		controller.$viewer.detach();
 		if (controller.bodyOverflow !== null) {
@@ -3442,6 +3623,10 @@
 			json: sniffJson,
 			xml: sniffXml,
 			css: sniffCss,
+			sql: sniffSql,
+			mysql: sniffSql,
+			mariadb: sniffSql,
+			pgsql: sniffSql,
 			ini: sniffIni,
 			yaml: sniffYaml,
 			r: sniffR,
@@ -3487,6 +3672,15 @@
 	 */
 	function sniffCss(text) {
 		return /[.#@a-zA-Z][^{;]*\{[^}]*:[^}]*\}/.test(text) || /^@[a-z-]+\s+/i.test(text);
+	}
+
+	/**
+	 * @param {string} text Field content.
+	 * @returns {boolean}
+	 */
+	function sniffSql(text) {
+		return /\b(?:select|insert|update|delete|create|alter|drop|with|from|where|join|table|view|index)\b/i.test(text)
+			|| (/;\s*$/.test(text) && /\b(?:on|set|values|group\s+by|order\s+by|limit|returning)\b/i.test(text));
 	}
 
 	/**
@@ -3555,6 +3749,10 @@
 				html: 'HTML',
 				json: 'JSON',
 				css: 'CSS',
+				sql: 'SQL',
+				mysql: 'SQL (MySQL)',
+				mariadb: 'SQL (MariaDB)',
+				pgsql: 'SQL (PostgreSQL)',
 				ini: 'INI',
 				r: 'R',
 				xml: 'XML',
@@ -3591,6 +3789,10 @@
 				json: THEME_LIGHT,
 				markdown: THEME_LIGHT,
 				css: THEME_LIGHT,
+				sql: THEME_LIGHT,
+				mysql: THEME_LIGHT,
+				mariadb: THEME_LIGHT,
+				pgsql: THEME_LIGHT,
 				ini: THEME_LIGHT,
 				r: THEME_LIGHT,
 				xml: THEME_LIGHT,

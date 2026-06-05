@@ -19,6 +19,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 	const AT_ENHANCED_TEXT_JSON = "@ENHANCED-TEXT-JSON";
 	const AT_ENHANCED_TEXT_MARKDOWN = "@ENHANCED-TEXT-MARKDOWN";
 	const AT_ENHANCED_TEXT_CSS = "@ENHANCED-TEXT-CSS";
+	const AT_ENHANCED_TEXT_SQL = "@ENHANCED-TEXT-SQL";
 	const AT_ENHANCED_TEXT_INI = "@ENHANCED-TEXT-INI";
 	const AT_ENHANCED_TEXT_R = "@ENHANCED-TEXT-R";
 	const AT_ENHANCED_TEXT_XML = "@ENHANCED-TEXT-XML";
@@ -236,6 +237,10 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 				'text' => $this->getAceModuleConfig('ace/mode/text', $ace_path . 'mode-text.js', null),
 				'ini' => $this->getAceModuleConfig('ace/mode/ini', $ace_path . 'mode-ini.js', null),
 				'css' => $this->getAceModuleConfig('ace/mode/css', $ace_path . 'mode-css.js', 'ace/mode/css_worker'),
+				'sql' => $this->getAceModuleConfig('ace/mode/sql', $ace_path . 'mode-sql.js', null),
+				'mysql' => $this->getAceModuleConfig('ace/mode/mysql', $ace_path . 'mode-mysql.js', null),
+				'mariadb' => $this->getAceModuleConfig('ace/mode/mariadb', $ace_path . 'mode-mariadb.js', null),
+				'pgsql' => $this->getAceModuleConfig('ace/mode/pgsql', $ace_path . 'mode-pgsql.js', null),
 				'r' => $this->getAceModuleConfig('ace/mode/r', $ace_path . 'mode-r.js', null),
 				'xml' => $this->getAceModuleConfig('ace/mode/xml', $ace_path . 'mode-xml.js', 'ace/mode/xml_worker'),
 				'yaml' => $this->getAceModuleConfig('ace/mode/yaml', $ace_path . 'mode-yaml.js', 'ace/mode/yaml_worker'),
@@ -350,7 +355,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 	 */
 	private function getThemePreferenceTypes()
 	{
-		return array('text', 'json', 'markdown', 'css', 'ini', 'r', 'xml', 'yaml');
+		return array('text', 'json', 'markdown', 'css', 'sql', 'mysql', 'mariadb', 'pgsql', 'ini', 'r', 'xml', 'yaml');
 	}
 
 	/**
@@ -399,8 +404,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			// Validate file attributes
 			$fileInfo = \Files::getEdocInfo($docId, $project_id, false);
 			if (empty($fileInfo) || $fileInfo['doc_name'] !== $request['filename']) break;
-			$fileMode = $this->determineFileMode($enhancedField['viewers'], $fileInfo['doc_name']);
-			if ($fileMode !== $request['mode']) break;
+			if (!$this->isFileModeCompatible($enhancedField['viewers'], $fileInfo['doc_name'], $request['mode'])) break;
 			$maxFileSize = $this->getMaxAllowedFileSize($project_id);
 			if ($maxFileSize > 0 && (intval($fileInfo['doc_size']) > $maxFileSize)) {
 				$error = str_replace('{maxFileSize}', $maxFileSize, $this->framework->tt('error_file_too_large'));
@@ -521,6 +525,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			'markdown' => 'markdown',
 			'md' => 'markdown',
 			'r' => 'r',
+			'sql' => 'sql',
 			'text' => 'text',
 			'txt' => 'text',
 			'xml' => 'xml',
@@ -528,10 +533,38 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			'yml' => 'yaml',
 		];
 		$mode = $modeMap[$extension] ?? '';
+		if ($extension === 'sql') {
+			foreach ($this->getSqlDialectModes() as $sqlMode) {
+				if (in_array($sqlMode, $viewers, true)) {
+					return $sqlMode;
+				}
+			}
+			return '';
+		}
 		if (!in_array($mode, $this->getSupportedFileModes(), true)) {
 			return '';
 		}
 		return in_array($mode, $viewers, true) ? $mode : '';
+	}
+
+	/**
+	 * Returns whether a requested file preview mode is compatible with a filename and field config.
+	 *
+	 * @param array  $viewers Configured viewer modes.
+	 * @param string $filename Uploaded filename.
+	 * @param string $mode Requested preview mode.
+	 * @return bool
+	 */
+	private function isFileModeCompatible($viewers, $filename, $mode)
+	{
+		if (!in_array($mode, $viewers, true) || !in_array($mode, $this->getSupportedFileModes(), true)) {
+			return false;
+		}
+		$extension = $this->getFileExtension($filename);
+		if ($extension === 'sql') {
+			return in_array($mode, $this->getSqlDialectModes(), true);
+		}
+		return $this->determineFileMode($viewers, $filename) === $mode;
 	}
 
 	/**
@@ -555,7 +588,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 	 */
 	private function getSupportedFileModes()
 	{
-		return ['text', 'json', 'markdown', 'css', 'ini', 'r', 'xml', 'yaml'];
+		return ['text', 'json', 'markdown', 'css', 'sql', 'mysql', 'mariadb', 'pgsql', 'ini', 'r', 'xml', 'yaml'];
 	}
 
 	/**
@@ -650,6 +683,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			self::AT_ENHANCED_TEXT_MARKDOWN,
 			self::AT_ENHANCED_TEXT_PLAIN,
 			self::AT_ENHANCED_TEXT_CSS,
+			self::AT_ENHANCED_TEXT_SQL,
 			self::AT_ENHANCED_TEXT_INI,
 			self::AT_ENHANCED_TEXT_R,
 			self::AT_ENHANCED_TEXT_XML,
@@ -674,6 +708,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			'markdown' => array('tag' => self::AT_ENHANCED_TEXT_MARKDOWN, 'allowTextField' => false),
 			'json' => array('tag' => self::AT_ENHANCED_TEXT_JSON, 'allowTextField' => true),
 			'css' => array('tag' => self::AT_ENHANCED_TEXT_CSS, 'allowTextField' => true),
+			'sql' => array('tag' => self::AT_ENHANCED_TEXT_SQL, 'allowTextField' => true),
 			'ini' => array('tag' => self::AT_ENHANCED_TEXT_INI, 'allowTextField' => false),
 			'r' => array('tag' => self::AT_ENHANCED_TEXT_R, 'allowTextField' => false),
 			'xml' => array('tag' => self::AT_ENHANCED_TEXT_XML, 'allowTextField' => true),
@@ -694,18 +729,22 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 					$params['format'] = 'compact';
 				}
 				$isFile = $fieldMetadata['element_type'] === 'file';
-				if (!isset($viewerFields[$fieldName])) {
-					$viewerFields[$fieldName] = [
-						'name' => $fieldName,
-						'isFile' => $isFile,
-						'viewers' => [$mode],
-						'readonly' => $isFile || $is_readonly($fieldName), // Files are always read-only
-						'rowConfig' => in_array($fieldMetadata['custom_alignment'] ?? '', ['LH', 'LV']) ? 'full' : 'split',
-						$mode => $params,
-					];
-				} else {
-					$viewerFields[$fieldName]['viewers'][] = $mode;
-					$viewerFields[$fieldName][$mode] = $params;
+				foreach ($this->expandEnhancementModes($mode, $params) as $modeConfig) {
+					$expandedMode = $modeConfig['mode'];
+					$expandedParams = $modeConfig['params'];
+					if (!isset($viewerFields[$fieldName])) {
+						$viewerFields[$fieldName] = [
+							'name' => $fieldName,
+							'isFile' => $isFile,
+							'viewers' => [$expandedMode],
+							'readonly' => $isFile || $is_readonly($fieldName), // Files are always read-only
+							'rowConfig' => in_array($fieldMetadata['custom_alignment'] ?? '', ['LH', 'LV']) ? 'full' : 'split',
+							$expandedMode => $expandedParams,
+						];
+					} else {
+						$viewerFields[$fieldName]['viewers'][] = $expandedMode;
+						$viewerFields[$fieldName][$expandedMode] = $expandedParams;
+					}
 				}
 			}
 		}
@@ -745,6 +784,10 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			'html' => $this->framework->tt('mode_html'),
 			'json' => $this->framework->tt('mode_json'),
 			'css' => $this->framework->tt('mode_css'),
+			'sql' => $this->framework->tt('mode_sql'),
+			'mysql' => $this->framework->tt('mode_mysql'),
+			'mariadb' => $this->framework->tt('mode_mariadb'),
+			'pgsql' => $this->framework->tt('mode_pgsql'),
 			'ini' => $this->framework->tt('mode_ini'),
 			'r' => $this->framework->tt('mode_r'),
 			'xml' => $this->framework->tt('mode_xml'),
@@ -768,6 +811,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			'format' => 'pretty',
 			'indent' => 2,
 			'mode' => $mode,
+			'dialect' => null,
 			'normalizes' => in_array($mode, ['css', 'json', 'xml'], true),
 			'scope' => 'form',
 		);
@@ -795,9 +839,20 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 				$config['initialMode'] = $mode;
 				continue;
 			}
+			if ($mode === 'sql' && preg_match('/^(sql|mysql|mariadb|pgsql|postgres|postgresql)-only$/', $token, $matches)) {
+				$config['editorOnly'] = true;
+				$config['initialMode'] = $this->normalizeSqlDialect($matches[1]) ?: 'sql';
+				continue;
+			}
 			// Initial
 			if (strpos($token, 'initial:') === 0) {
 				$initial_mode = trim(substr($token, strlen('initial:')));
+				if ($mode === 'sql') {
+					$sqlInitialMode = $this->normalizeSqlDialect($initial_mode);
+					if ($sqlInitialMode !== null) {
+						$config['initialMode'] = $sqlInitialMode;
+					}
+				}
 				if ($initial_mode === $mode || $initial_mode === 'editor') {
 					$config['initialMode'] = $mode;
 				}
@@ -823,6 +878,10 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 				if (in_array($scope, ['form', 'survey', 'all'], true)) {
 					$config['scope'] = $scope;
 				}
+				continue;
+			}
+			if ($mode === 'sql' && strpos($token, 'dialect:') === 0) {
+				$config['dialect'] = $this->normalizeSqlDialect(substr($token, strlen('dialect:')));
 				continue;
 			}
 			// CSS-, JSON-, XML-specific 
@@ -853,6 +912,92 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			$config['initialMode'] = $mode;
 		}
 		return $config;
+	}
+
+	/**
+	 * Expands public action-tag modes into internal viewer modes.
+	 *
+	 * @param string $mode   Public enhancement mode.
+	 * @param array  $params Parsed action-tag params.
+	 * @return array
+	 */
+	private function expandEnhancementModes($mode, $params)
+	{
+		if ($mode !== 'sql') {
+			return [
+				['mode' => $mode, 'params' => $params],
+			];
+		}
+
+		$dialect = $params['dialect'] ?? null;
+		$modes = $dialect === null ? $this->getSqlDialectModes() : [$dialect];
+		$expanded = [];
+		foreach ($modes as $sqlMode) {
+			$modeParams = $params;
+			$modeParams['mode'] = $sqlMode;
+			$modeParams['dialect'] = $sqlMode;
+			$modeParams['label'] = $this->getSqlModeLabel($sqlMode);
+			$modeParams['normalizes'] = false;
+			if ($params['initialMode'] === 'sql' || $params['initialMode'] === $sqlMode) {
+				$modeParams['initialMode'] = $sqlMode;
+			}
+			if ($params['editorOnly'] && ($params['initialMode'] === 'sql' || $params['initialMode'] === $sqlMode)) {
+				$modeParams['initialMode'] = $sqlMode;
+			}
+			$expanded[] = [
+				'mode' => $sqlMode,
+				'params' => $modeParams,
+			];
+		}
+		return $expanded;
+	}
+
+	/**
+	 * Returns internal SQL dialect mode keys in default selection order.
+	 *
+	 * @return array
+	 */
+	private function getSqlDialectModes()
+	{
+		return ['sql', 'mysql', 'mariadb', 'pgsql'];
+	}
+
+	/**
+	 * Normalizes a SQL dialect parameter to an internal Ace mode key.
+	 *
+	 * @param string $dialect Raw dialect parameter.
+	 * @return string|null
+	 */
+	private function normalizeSqlDialect($dialect)
+	{
+		$dialect = strtolower(trim((string)$dialect));
+		$aliases = [
+			'general' => 'sql',
+			'sql' => 'sql',
+			'mysql' => 'mysql',
+			'mariadb' => 'mariadb',
+			'postgres' => 'pgsql',
+			'postgresql' => 'pgsql',
+			'pgsql' => 'pgsql',
+		];
+		return $aliases[$dialect] ?? null;
+	}
+
+	/**
+	 * Returns the display label for an internal SQL dialect mode.
+	 *
+	 * @param string $mode Internal SQL mode key.
+	 * @return string
+	 */
+	private function getSqlModeLabel($mode)
+	{
+		$labels = [
+			'sql' => $this->framework->tt('mode_sql'),
+			'mysql' => $this->framework->tt('mode_mysql'),
+			'mariadb' => $this->framework->tt('mode_mariadb'),
+			'pgsql' => $this->framework->tt('mode_pgsql'),
+		];
+		return $labels[$mode] ?? strtoupper($mode);
 	}
 
 	/**
