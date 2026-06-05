@@ -188,8 +188,9 @@
 	white-space: nowrap;
 	outline: none;
 	padding: 2px 4px;
+	border-bottom: 1px solid transparent;
 }
-
+ 
 .rc-text-viewer-md-tabs a.rc-text-viewer-md-tab:hover {
 	border-bottom: 1px solid #315b7d;
 }
@@ -199,6 +200,40 @@
 	font-weight: 600;
 	text-decoration: none;
 	border-bottom: 1px solid #315b7d;
+}
+
+.rc-text-viewer-md-format-button {
+	margin-left: -3px;
+	margin-right: 5px;
+	min-height: 18px;
+	min-width: 18px;
+	font-size: 75%;
+}
+.rc-text-viewer-format-popover-container .popover-header {
+	font-size: 13px;
+	margin: 0;
+	padding: 4px 8px;
+	background-color: lightgoldenrodyellow;
+}
+.rc-text-viewer-format-popover-container .popover-body {
+	padding: 8px;
+}
+
+.rc-text-viewer-format-popover {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	min-width: 120px;
+}
+
+.rc-text-viewer-format-popover__option {
+	align-items: center;
+	cursor: pointer;
+	display: flex;
+	font-size: 12px;
+	gap: 6px;
+	margin: 0;
+	white-space: nowrap;
 }
 
 .rc-text-viewer-md-tab-group {
@@ -239,7 +274,6 @@
 	display: inline-flex;
 	justify-content: center;
 	padding: 0;
-	margin-left: 2px;
 }
 
 .rc-text-viewer__icon-button:hover,

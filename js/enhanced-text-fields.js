@@ -29,6 +29,8 @@
 	const CONTROLLED_FIELD_CLASS = 'rc-text-viewer-controlled-field';
 	const MODE_ATTRIBUTE = 'data-rc-text-viewer-mode';
 	const MODE_SELECTOR = '[' + MODE_ATTRIBUTE + ']';
+	const FORMAT_POPOVER_BUTTON_SELECTOR = '[data-rc-text-viewer-format-popover]';
+	const FORMAT_RADIO_SELECTOR = '[data-rc-text-viewer-format-radio]';
 	const LAYOUT_ATTRIBUTE = 'data-rc-text-viewer-layout';
 	const TOOLBAR_CLASS = 'rc-text-viewer-md-toolbar d-print-none';
 	const VIEWER_CLASS = 'rc-text-viewer-panel';
@@ -475,6 +477,8 @@
 
 		return {
 			fieldName: fieldName,
+			field: field,
+			eventNamespace: '.rcTextViewerMode' + String(fieldName).replace(/\W/g, '') + String(options.enhancementMode || '').replace(/\W/g, ''),
 			$control: $control,
 			$row: $(`tr[sq_id="${escapeSelector(fieldName)}"]`).first(),
 			$expandLink: $('#' + escapeSelector(fieldName) + '-expand'),
@@ -633,6 +637,74 @@
 	}
 
 	/**
+	 * Builds the configured editor-mode popover trigger.
+	 *
+	 * @param {object} field Field configuration.
+	 * @param {string} selectedMode Currently selected enhancement mode.
+	 * @returns {jQuery}
+	 */
+	function createFormatPopoverButton(field, selectedMode) {
+		return $('<button/>', {
+			type: 'button',
+			class: 'rc-text-viewer__icon-button rc-text-viewer-md-format-button',
+			title: getString('label_format', 'Format'),
+			'aria-label': getString('label_format', 'Format'),
+			'data-rc-text-viewer-format-popover': '1',
+			'data-rc-text-viewer-selected-mode': selectedMode,
+		}).append($('<i/>', { class: 'fa-solid fa-arrow-right-arrow-left', 'aria-hidden': 'true' }));
+	}
+
+	/**
+	 * Builds the format popover body.
+	 *
+	 * @param {object} field Field configuration.
+	 * @param {string} selectedMode Currently selected enhancement mode.
+	 * @returns {string}
+	 */
+	function createFormatPopoverContent(field, selectedMode) {
+		const modes = getConfiguredTextModes(field);
+		const name = 'rc-text-viewer-format-' + String(field.name || '').replace(/\W/g, '_');
+		const $list = $('<div/>', {
+			class: 'rc-text-viewer-format-popover',
+			'data-rc-text-viewer-field': field.name || '',
+		});
+		modes.forEach(function (mode) {
+			const id = name + '-' + mode;
+			const $radio = $('<input/>', {
+				type: 'radio',
+				id: id,
+				name: name,
+				value: mode,
+				checked: mode === selectedMode,
+				'data-rc-text-viewer-format-radio': '1',
+			});
+			const $label = $('<label/>', { class: 'rc-text-viewer-format-popover__option', for: id });
+			$label.append($radio, $('<span/>', { text: getModeLabel(mode) }));
+			$list.append($label);
+		});
+		return $list.prop('outerHTML');
+	}
+
+	/**
+	 * Builds a normal selected-mode tab with a compact format selector beside it.
+	 *
+	 * @param {string} tabMode Mode value for this tab.
+	 * @param {object} field Field configuration.
+	 * @param {string} selectedMode Currently selected enhancement mode.
+	 * @param {jQuery} $themeButton Theme toggle button.
+	 * @returns {jQuery}
+	 */
+	function createFormatModeTab(tabMode, field, selectedMode, $themeButton) {
+		const $group = $('<span/>', { class: 'rc-text-viewer-md-tab-group' });
+		$group.append(createModeTab(tabMode, getModeLabel(tabMode)));
+		$group.append(createFormatPopoverButton(field, selectedMode));
+		if ($themeButton && $themeButton.length) {
+			$group.append($themeButton);
+		}
+		return $group;
+	}
+
+	/**
 	 * Appends mode tabs with separators.
 	 *
 	 * @param {jQuery} $tabs Toolbar tabs container.
@@ -747,7 +819,7 @@
 					controller.$control.val(editor.getValue()).trigger('change');
 					renderMarkdown(controller);
 				}, 100));
-				controller.$control.on('input change keyup', debounce(function () {
+				controller.$control.on('input.rcTextViewerMode change.rcTextViewerMode keyup.rcTextViewerMode', debounce(function () {
 					if (editor.getValue() !== (controller.$control.val() || '')) {
 						editor.setValue(controller.$control.val() || '', -1);
 					}
@@ -966,6 +1038,183 @@
 	}
 
 	/**
+	 * Inserts or returns the stable DOM anchor used when rebuilding a field controller.
+	 *
+	 * @param {jQuery} $control Field input or textarea.
+	 * @param {string} fieldName REDCap field name.
+	 * @returns {jQuery}
+	 */
+	function getOrCreateTextViewerAnchor($control, fieldName) {
+		const existing = $control.data('rcTextViewerAnchor');
+		if (existing && existing.length) {
+			return existing;
+		}
+		const $anchor = $('<span/>', {
+			class: 'rc-text-viewer-anchor',
+			'data-rc-text-viewer-anchor': fieldName,
+		}).hide();
+		$control.before($anchor);
+		$control.data('rcTextViewerAnchor', $anchor);
+		return $anchor;
+	}
+
+	/**
+	 * Switches a text field to another configured enhancement mode by rebuilding its controller.
+	 *
+	 * @param {object} controller Current text viewer controller.
+	 * @param {string} mode Enhancement mode to activate.
+	 * @returns {void}
+	 */
+	function switchEnhancedTextMode(controller, mode) {
+		if (!controller || !isSupportedEnhancementMode(mode) || controller.configuredModes.indexOf(mode) === -1) {
+			return;
+		}
+		const field = controller.field;
+		const $control = controller.$control;
+		const $anchor = controller.$anchor;
+		flushEnhancedTextController(controller);
+		destroyEnhancedTextController(controller);
+		createEnhancedTextController($control, field, mode, { $anchor: $anchor });
+	}
+
+	/**
+	 * Pushes any active editor content into the REDCap control before rebuilding.
+	 *
+	 * @param {object} controller Text viewer controller.
+	 * @returns {void}
+	 */
+	function flushEnhancedTextController(controller) {
+		if (!controller || !controller.editor || controller.editor.getReadOnly()) {
+			return;
+		}
+		if (controller.enhancementMode === VIEW_MARKDOWN) {
+			controller.$control.val(controller.editor.getValue()).trigger('change');
+			renderMarkdown(controller);
+			return;
+		}
+		controller.normalizeEditor();
+		syncAceTextFromEditor(controller);
+	}
+
+	/**
+	 * Removes a text viewer controller while preserving the REDCap field control.
+	 *
+	 * @param {object} controller Text viewer controller.
+	 * @returns {void}
+	 */
+	function destroyEnhancedTextController(controller) {
+		if (!controller) {
+			return;
+		}
+		disposeFormatPopover(controller);
+		if (controller.layout !== LAYOUT_NORMAL) {
+			restoreTextViewerLayout(controller);
+		}
+		if (controller.editor) {
+			try {
+				controller.editor.destroy();
+				controller.editor.container.remove();
+			}
+			catch (e) {
+				LOGGER.warn('Ace editor cleanup failed', e);
+			}
+		}
+		if (controller.$anchor && controller.$anchor.length) {
+			controller.$anchor.after(controller.$control);
+		}
+		$(global).off(controller.eventNamespace);
+		controller.$control.off('.rcTextViewerMode');
+		controller.$control.show();
+		controller.$toolbar.off().remove();
+		controller.$viewer.remove();
+		controller.$editorViewer.remove();
+		controller.$rawPanel.remove();
+		delete state.editors[controller.fieldName + '-' + controller.enhancementMode];
+	}
+
+	/**
+	 * Initializes the Bootstrap popover used to switch configured editor formats.
+	 *
+	 * @param {object} controller Text viewer controller.
+	 * @returns {void}
+	 */
+	function initFormatPopover(controller) {
+		const $button = controller.$toolbar.find(FORMAT_POPOVER_BUTTON_SELECTOR).first();
+		if (!$button.length) {
+			return;
+		}
+		controller.$formatPopoverButton = $button;
+		$button.data('rcTextViewerController', controller);
+		const options = {
+			html: true,
+			content: createFormatPopoverContent(controller.field, controller.enhancementMode),
+			container: 'body',
+			customClass: 'rc-text-viewer-format-popover-container',
+			placement: 'bottom',
+			trigger: 'click',
+			sanitize: false,
+		};
+		if (global.bootstrap && global.bootstrap.Popover) {
+			controller.formatPopover = new global.bootstrap.Popover($button[0], options);
+		}
+		else if ($.fn.popover) {
+			$button.popover(options);
+			controller.formatPopover = { type: 'jquery' };
+		}
+		$(document).on('change' + controller.eventNamespace, FORMAT_RADIO_SELECTOR, function () {
+			const mode = $(this).val();
+			const activeController = $button.data('rcTextViewerController');
+			const fieldName = $(this).closest('.rc-text-viewer-format-popover').attr('data-rc-text-viewer-field') || '';
+			if (activeController && fieldName === activeController.fieldName && mode && mode !== activeController.enhancementMode) {
+				hideFormatPopover(activeController);
+				switchEnhancedTextMode(activeController, mode);
+			}
+		});
+	}
+
+	/**
+	 * Hides the active format popover for a controller.
+	 *
+	 * @param {object} controller Text viewer controller.
+	 * @returns {void}
+	 */
+	function hideFormatPopover(controller) {
+		if (!controller || !controller.formatPopover) {
+			return;
+		}
+		if (controller.formatPopover.type !== 'jquery' && typeof controller.formatPopover.hide === 'function') {
+			controller.formatPopover.hide();
+			return;
+		}
+		if (controller.$formatPopoverButton && $.fn.popover) {
+			controller.$formatPopoverButton.popover('hide');
+		}
+	}
+
+	/**
+	 * Disposes the active format popover for a controller.
+	 *
+	 * @param {object} controller Text viewer controller.
+	 * @returns {void}
+	 */
+	function disposeFormatPopover(controller) {
+		if (!controller) {
+			return;
+		}
+		$(document).off(controller.eventNamespace);
+		if (!controller.formatPopover) {
+			return;
+		}
+		if (controller.formatPopover.type !== 'jquery' && typeof controller.formatPopover.dispose === 'function') {
+			controller.formatPopover.dispose();
+		}
+		else if (controller.$formatPopoverButton && $.fn.popover) {
+			controller.$formatPopoverButton.popover('destroy');
+		}
+		controller.formatPopover = null;
+	}
+
+	/**
 	 * Builds a controller specification for one enhancement mode.
 	 *
 	 * @param {jQuery} $control Field input or textarea.
@@ -978,17 +1227,18 @@
 		const isMarkdown = mode === VIEW_MARKDOWN;
 		const modeConfig = field[mode] || {};
 		const editorOnly = !!modeConfig.editorOnly;
+		const editorModeId = fieldName + '-' + mode;
 		const spec = {
 			mode: mode,
 			modeConfig: modeConfig,
 			editorOnly: editorOnly,
 			initialMode: editorOnly ? mode : getInitialMode($control, mode, modeConfig.initialMode),
 			editorMode: mode,
-			editorId: `rc-text-viewer-ace-${fieldName}`,
+			editorId: `rc-text-viewer-ace-${editorModeId}`,
 			defaultMode: mode,
 			tabs: editorOnly ? [mode] : [VIEW_RAW, mode],
 			stateKey: fieldName,
-			editorKey: fieldName,
+			editorKey: editorModeId,
 			status: !isMarkdown,
 			buildController: extendAceBackedController,
 			mount: mountAceTextViewer,
@@ -1019,8 +1269,9 @@
 	 * @param {string} mode Enhancement mode.
 	 * @returns {object}
 	 */
-	function createEnhancedTextController($control, field, mode) {
+	function createEnhancedTextController($control, field, mode, options) {
 		const fieldName = field.name;
+		options = options || {};
 		const spec = getEnhancedTextSpec($control, field, mode);
 		const toolbarParts = createToolbarParts(fieldName, field.rowConfig === 'split');
 		spec.$themeButton = toolbarParts.$themeButton;
@@ -1055,15 +1306,18 @@
 			$themeButton: toolbarParts.$themeButton,
 			initialHeight: getInitialViewerHeight(spec.modeConfig),
 		});
+		controller.$anchor = options.$anchor || getOrCreateTextViewerAnchor($control, fieldName);
+		controller.configuredModes = getConfiguredTextModes(field);
 
 		spec.buildController(controller, spec, $status);
 		if (field.readonly) {
 			applyReadonlyState($control, controller.$row);
 		}
 
-		appendControllerTabs(toolbarParts.$tabs, $editability, spec, $status);
+		appendControllerTabs(toolbarParts.$tabs, $editability, spec, $status, field, mode);
 		spec.mount(controller);
 		bindTextViewerToolbar(controller, spec.setMode);
+		initFormatPopover(controller);
 		initTextViewerResizeHandles(controller);
 		initEnhancedEditor(controller, spec.editorId, field, spec);
 		if (spec.afterCreate) {
@@ -1802,10 +2056,15 @@
 	 * @param {jQuery} $editability Editable/readonly indicator.
 	 * @param {object} spec Controller specification.
 	 * @param {jQuery} $status Optional status indicator.
+	 * @param {object} field Field configuration.
+	 * @param {string} selectedMode Selected enhancement mode.
 	 * @returns {void}
 	 */
-	function appendControllerTabs($tabs, $editability, spec, $status) {
+	function appendControllerTabs($tabs, $editability, spec, $status, field, selectedMode) {
 		const tabItems = spec.tabs.map(function (tabMode) {
+			if (tabMode === spec.mode && getConfiguredTextModes(field).length > 1) {
+				return createFormatModeTab(tabMode, field, selectedMode, spec.$themeButton);
+			}
 			return createThemeableModeTab(tabMode, getModeLabel(tabMode), spec.mode, spec.$themeButton);
 		});
 		$tabs.append($editability);
@@ -1824,13 +2083,15 @@
 	 * Builds a mode tab and, when applicable, places the theme toggle immediately after it.
 	 *
 	 * @param {string} tabMode Mode value for this tab.
-	 * @param {string} label Visible tab label.
+	 * @param {string|jQuery} label Visible tab label or replacement control.
 	 * @param {string} themeMode Mode that supports theme switching.
 	 * @param {jQuery} $themeButton Theme toggle button.
 	 * @returns {jQuery}
 	 */
 	function createThemeableModeTab(tabMode, label, themeMode, $themeButton) {
-		const $tab = createModeTab(tabMode, label);
+		const $tab = label && label.jquery
+			? $('<span/>', { class: 'rc-text-viewer-md-tab active', [MODE_ATTRIBUTE]: tabMode }).append(label)
+			: createModeTab(tabMode, label);
 		if (!$themeButton || !$themeButton.length || tabMode !== themeMode) {
 			return $tab;
 		}
@@ -2119,7 +2380,7 @@
 	 * @returns {void}
 	 */
 	function initMarkdownWindowResize(controller) {
-		$(global).on('resize', debounce(function () {
+		$(global).on('resize' + controller.eventNamespace, debounce(function () {
 			if ((controller.mode === VIEW_MARKDOWN || controller.mode === VIEW_HTML) && controller.layout === LAYOUT_NORMAL) {
 				syncTextViewerNormalSize(controller, false);
 			}
@@ -3093,7 +3354,7 @@
 				return;
 			}
 
-			const mode = determineMode(field.viewers || []);
+			const mode = determineInitialModeForField($control, field);
 			const key = `${NS}-isInitialized`;
 			if (mode === '' || $control.data(key)) {
 				return;
@@ -3104,14 +3365,154 @@
 	}
 
 	/**
-	 * Determines which enhancement mode to use for the given field.
+	 * Returns supported text enhancement modes configured for a field.
 	 *
-	 * @param {string[]} viewers Configured enhancement modes.
+	 * @param {object} field Field configuration.
+	 * @returns {string[]}
+	 */
+	function getConfiguredTextModes(field) {
+		const seen = {};
+		return (field.viewers || []).filter(function (mode) {
+			if (!isSupportedEnhancementMode(mode) || seen[mode]) {
+				return false;
+			}
+			seen[mode] = true;
+			return true;
+		});
+	}
+
+	/**
+	 * Determines the initial enhancement mode for a text field.
+	 *
+	 * @param {jQuery} $control Field input or textarea.
+	 * @param {object} field Field configuration.
 	 * @returns {string}
 	 */
-	function determineMode(viewers) {
-		viewers = viewers || [];
-		return viewers.filter(isSupportedEnhancementMode)[0] || '';
+	function determineInitialModeForField($control, field) {
+		const modes = getConfiguredTextModes(field);
+		if (!modes.length) {
+			return '';
+		}
+		const sniffedMode = sniffConfiguredTextMode($control.val() || '', modes);
+		if (sniffedMode) {
+			return sniffedMode;
+		}
+		const configuredInitial = modes.filter(function (mode) {
+			const modeConfig = field[mode] || {};
+			return modeConfig.initialMode === mode || (mode === VIEW_MARKDOWN && modeConfig.initialMode === VIEW_HTML);
+		})[0];
+		return configuredInitial || modes[0];
+	}
+
+	/**
+	 * Guesses the content type among configured enhancement modes.
+	 *
+	 * @param {string} value Field content.
+	 * @param {string[]} modes Configured enhancement modes.
+	 * @returns {string}
+	 */
+	function sniffConfiguredTextMode(value, modes) {
+		const text = String(value || '').trim();
+		if (text === '') {
+			return '';
+		}
+		const sniffers = {
+			json: sniffJson,
+			xml: sniffXml,
+			css: sniffCss,
+			ini: sniffIni,
+			yaml: sniffYaml,
+			r: sniffR,
+			markdown: sniffMarkdown,
+			text: sniffPlainText,
+		};
+		return modes.filter(function (mode) {
+			return sniffers[mode] && sniffers[mode](text, modes);
+		})[0] || '';
+	}
+
+	/**
+	 * @param {string} text Field content.
+	 * @returns {boolean}
+	 */
+	function sniffJson(text) {
+		if (!/^[\[{"]|^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$|^(?:true|false|null)$/.test(text)) {
+			return false;
+		}
+		try {
+			JSON.parse(text);
+			return true;
+		}
+		catch (e) {
+			return false;
+		}
+	}
+
+	/**
+	 * @param {string} text Field content.
+	 * @returns {boolean}
+	 */
+	function sniffXml(text) {
+		if (text.charAt(0) !== '<' || text.indexOf('>') === -1) {
+			return false;
+		}
+		return formatXml(text, 'compact', 2).ok;
+	}
+
+	/**
+	 * @param {string} text Field content.
+	 * @returns {boolean}
+	 */
+	function sniffCss(text) {
+		return /[.#@a-zA-Z][^{;]*\{[^}]*:[^}]*\}/.test(text) || /^@[a-z-]+\s+/i.test(text);
+	}
+
+	/**
+	 * @param {string} text Field content.
+	 * @returns {boolean}
+	 */
+	function sniffIni(text) {
+		return /(^|\n)\s*\[[^\]\n]+\]\s*(\n|$)/.test(text) || /(^|\n)\s*[A-Za-z0-9_.-]+\s*=\s*.+/.test(text);
+	}
+
+	/**
+	 * @param {string} text Field content.
+	 * @returns {boolean}
+	 */
+	function sniffYaml(text) {
+		if (/^---\s*(\n|$)/.test(text)) {
+			return true;
+		}
+		return /(^|\n)\s*[A-Za-z0-9_.-]+\s*:\s+\S/.test(text) || /(^|\n)\s*-\s+\S/.test(text);
+	}
+
+	/**
+	 * @param {string} text Field content.
+	 * @returns {boolean}
+	 */
+	function sniffR(text) {
+		return /(^|\n)\s*[A-Za-z_][A-Za-z0-9_]*\s*<-\s*/.test(text)
+			|| /\b(?:library|require|data\.frame|function)\s*\(/.test(text);
+	}
+
+	/**
+	 * @param {string} text Field content.
+	 * @returns {boolean}
+	 */
+	function sniffMarkdown(text) {
+		return /(^|\n)#{1,6}\s+\S/.test(text)
+			|| /(^|\n)\s*[-*+]\s+\S/.test(text)
+			|| /\[[^\]]+\]\([^)]+\)/.test(text)
+			|| /(^|\n)```/.test(text);
+	}
+
+	/**
+	 * @param {string} text Field content.
+	 * @param {string[]} modes Configured enhancement modes.
+	 * @returns {boolean}
+	 */
+	function sniffPlainText(text, modes) {
+		return modes.length === 1 && modes[0] === 'text' && text !== '';
 	}
 
 	/**
@@ -3153,6 +3554,7 @@
 				error_file_preview_unavailable: 'Unable to load file.',
 				error_file_unavailable: 'This file is not currently available for viewing.',
 				error_xml_parse: 'XML parse error',
+				label_format: 'Format',
 				label_or: 'or',
 				status_loading: 'Loading...',
 				status_invalid: 'Invalid {mode}: {error}',

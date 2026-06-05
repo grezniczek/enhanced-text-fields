@@ -205,6 +205,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			'error_file_preview_unavailable',
 			'error_file_unavailable',
 			'error_xml_parse',
+			'label_format',
 			'label_or',
 			'status_loading',
 			'status_invalid',
