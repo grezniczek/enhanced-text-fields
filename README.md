@@ -128,6 +128,3 @@ Enhanced Text Fields uses bundled third-party browser libraries:
 
 REDCap is developed and maintained by Vanderbilt University. This module is an independent REDCap External Module and is not part of REDCap core.
 
-## TODO
-
-Before public release, rename the module folder/prefix to `enhanced_text_fields`.
