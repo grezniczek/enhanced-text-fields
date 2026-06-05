@@ -1,5 +1,7 @@
 # Enhanced Text Fields
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20555867.svg)](https://doi.org/10.5281/zenodo.20555867)
+
 Enhanced Text Fields is a REDCap External Module for working with structured or formatted text directly inside data entry forms and surveys. It enhances REDCap text boxes, Notes fields, and file upload fields with Ace-backed viewers/editors for JSON, Markdown, CSS, XML, YAML, INI, R, and plain text.
 
 The original REDCap field remains the canonical storage location. For editable text and Notes fields, the module adds richer editing, preview, formatting, validation, resizing, row expansion, fullscreen mode, and per-user light/dark editor themes. For file upload fields, the module adds a read-only preview link when the uploaded filename matches one of the configured text formats.
