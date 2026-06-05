@@ -103,7 +103,7 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			case self::AJAX_SAVE_THEME_PREFERENCE:
 				return $this->saveThemePreference($payload, $user_id);
 			case self::AJAX_GET_FILE_CONTENT:
-				return $this->getFileContent($payload, $project_id, $user_id, $instrument, $survey_hash, $record);
+				return $this->getFileContent($payload, $project_id, $user_id, $instrument, $event_id, $repeat_instance, $survey_hash, $record);
 		}
 	}
 
@@ -149,16 +149,16 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 
 		// Inject CSS and JS
 		$inject = InjectionHelper::init($this);
-		$inject->css('css/enhanced-text-fields.css');
+		$inject->css('css/enhanced-text-fields.css', $is_survey);
 		if ($this->hasEnhancementType($enhanced_fields, 'markdown')) {
-			$inject->css('css/github-markdown-light.css');
-			$inject->css('css/highlight-theme.css');
-			$inject->js('js/marked.min.js');
-			$inject->js('js/highlight.min.js');
-			$inject->js('js/hljs-languages.js');
+			$inject->css('css/github-markdown-light.css', $is_survey);
+			$inject->css('css/highlight-theme.css', $is_survey);
+			$inject->js('js/marked.min.js', $is_survey);
+			$inject->js('js/highlight.min.js', $is_survey);
+			$inject->js('js/hljs-languages.js', $is_survey);
 		}
-		$inject->js('js/ConsoleDebugLogger.js');
-		$inject->js('js/enhanced-text-fields.js');
+		$inject->js('js/ConsoleDebugLogger.js', $is_survey);
+		$inject->js('js/enhanced-text-fields.js', $is_survey);
 
 		// Inject the JSMO and the module initialization code.
 		$this->framework->initializeJavascriptModuleObject();
@@ -360,18 +360,24 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 	 * @param int|string  $project_id  Current project id.
 	 * @param string|null $user_id     Current REDCap username.
 	 * @param string|null $instrument  Current instrument name.
+	 * @param int|null    $event_id    Current event id.
+	 * @param int|null    $instance    Current repeat instance.
 	 * @param string|null $survey_hash Current survey hash.
 	 * @param string|null $record      Current record id.
 	 * @return array{ok:bool,content?:string,error?:string}
 	 */
-	private function getFileContent($payload, $project_id, $user_id, $instrument, $survey_hash, $record)
+	private function getFileContent($payload, $project_id, $user_id, $instrument, $event_id, $instance, $survey_hash, $record)
 	{
-		$docId = $payload['docId'];
+		$request = $this->validateFileContentPayload($payload);
 		$content = false;
 		$error = $this->framework->tt('error_file_unavailable');
 		do {
+			if ($request === null || !ctype_digit((string)$project_id) || empty($instrument)) break;
+
+			$docId = $request['docId'];
+
 			// Validate hash
-			$docIdHash = $payload['docIdHash'];
+			$docIdHash = $request['docIdHash'];
 			$expectedHash = \Files::docIdHash($docId);
 			if ($docIdHash !== $expectedHash) break;
 
@@ -381,15 +387,20 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 
 			// Validate field context
 			$Proj = new \Project($project_id);
-			$fieldName = $payload['fieldName'];
+			$fieldName = $request['fieldName'];
+			if (empty($Proj->forms[$instrument]['fields']) || !is_array($Proj->forms[$instrument]['fields'])) break;
 			if (!array_key_exists($fieldName, $Proj->forms[$instrument]['fields'])) break;
+			$enhancedField = $this->getConfiguredFileViewerField($Proj, $record, $instrument, $event_id, $instance, $user_id === null, $fieldName);
+			if ($enhancedField === null || !in_array($request['mode'], $enhancedField['viewers'], true)) break;
 
 			// Validate survey
 			if (!empty($survey_hash) && empty($Proj->forms[$instrument]['survey_id'])) break;
 	
 			// Validate file attributes
 			$fileInfo = \Files::getEdocInfo($docId, $project_id, false);
-			if ($fileInfo['doc_name'] !== $payload['filename']) break;
+			if (empty($fileInfo) || $fileInfo['doc_name'] !== $request['filename']) break;
+			$fileMode = $this->determineFileMode($enhancedField['viewers'], $fileInfo['doc_name']);
+			if ($fileMode !== $request['mode']) break;
 			$maxFileSize = $this->getMaxAllowedFileSize($project_id);
 			if ($maxFileSize > 0 && (intval($fileInfo['doc_size']) > $maxFileSize)) {
 				$error = str_replace('{maxFileSize}', $maxFileSize, $this->framework->tt('error_file_too_large'));
@@ -405,7 +416,9 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			}
 
 			// All valid, get content
-			list ($_, $_, $content) = \Files::getEdocContentsAttributes($docId);
+			$contentAttributes = \Files::getEdocContentsAttributes($docId);
+			if (!is_array($contentAttributes) || !array_key_exists(2, $contentAttributes)) break;
+			$content = $contentAttributes[2];
 
 		} while (false);
 
@@ -416,6 +429,133 @@ class EnhancedTextFieldsExternalModule extends \ExternalModules\AbstractExternal
 			'ok' => true,
 			'content' => $content,
 		];
+	}
+
+	/**
+	 * Normalizes and validates the client payload for file preview content.
+	 *
+	 * @param mixed $payload Client payload.
+	 * @return array{docId:int,docIdHash:string,fieldName:string,filename:string,mode:string}|null
+	 */
+	private function validateFileContentPayload($payload)
+	{
+		if (!is_array($payload)) {
+			return null;
+		}
+
+		foreach (['docId', 'docIdHash', 'fieldName', 'filename', 'mode'] as $key) {
+			if (!isset($payload[$key]) || (!is_string($payload[$key]) && !is_int($payload[$key]))) {
+				return null;
+			}
+		}
+
+		$docIdText = (string)$payload['docId'];
+		$docIdHash = (string)$payload['docIdHash'];
+		$fieldName = (string)$payload['fieldName'];
+		$filename = trim((string)$payload['filename']);
+		$mode = (string)$payload['mode'];
+
+		if (!ctype_digit($docIdText) || (int)$docIdText <= 0) {
+			return null;
+		}
+		if (!preg_match('/^[a-f0-9]{32,128}$/i', $docIdHash)) {
+			return null;
+		}
+		if (!preg_match('/^[a-z][a-z0-9_]*$/', $fieldName)) {
+			return null;
+		}
+		if ($filename === '' || strlen($filename) > 1024 || preg_match('/[\x00-\x1F\x7F]/', $filename)) {
+			return null;
+		}
+		if (!in_array($mode, $this->getSupportedFileModes(), true)) {
+			return null;
+		}
+
+		return [
+			'docId' => (int)$docIdText,
+			'docIdHash' => $docIdHash,
+			'fieldName' => $fieldName,
+			'filename' => $filename,
+			'mode' => $mode,
+		];
+	}
+
+	/**
+	 * Finds the configured file preview definition for a field in the current page scope.
+	 *
+	 * @param \Project    $Proj       REDCap project.
+	 * @param string|null $record     Current record id.
+	 * @param string      $instrument Current instrument name.
+	 * @param int|null    $event_id   Current event id.
+	 * @param int|null    $instance   Current repeat instance.
+	 * @param bool        $is_survey  Whether the request is from a survey page.
+	 * @param string      $fieldName  Requested REDCap field name.
+	 * @return array|null
+	 */
+	private function getConfiguredFileViewerField($Proj, $record, $instrument, $event_id, $instance, $is_survey, $fieldName)
+	{
+		foreach ($this->getEnhancedFields($Proj, $record, $instrument, $event_id, $instance, $is_survey) as $field) {
+			if (($field['name'] ?? '') === $fieldName && !empty($field['isFile'])) {
+				return $field;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Determines the configured preview mode for a filename.
+	 *
+	 * @param array  $viewers  Configured viewer modes.
+	 * @param string $filename Uploaded filename.
+	 * @return string
+	 */
+	private function determineFileMode($viewers, $filename)
+	{
+		$extension = $this->getFileExtension($filename);
+		$modeMap = [
+			'conf' => 'ini',
+			'css' => 'css',
+			'ini' => 'ini',
+			'json' => 'json',
+			'log' => 'text',
+			'markdown' => 'markdown',
+			'md' => 'markdown',
+			'r' => 'r',
+			'text' => 'text',
+			'txt' => 'text',
+			'xml' => 'xml',
+			'yaml' => 'yaml',
+			'yml' => 'yaml',
+		];
+		$mode = $modeMap[$extension] ?? '';
+		if (!in_array($mode, $this->getSupportedFileModes(), true)) {
+			return '';
+		}
+		return in_array($mode, $viewers, true) ? $mode : '';
+	}
+
+	/**
+	 * Returns the lowercase extension for a filename.
+	 *
+	 * @param string $filename Uploaded filename.
+	 * @return string
+	 */
+	private function getFileExtension($filename)
+	{
+		$clean = preg_split('/[?#]/', (string)$filename, 2)[0];
+		$basename = basename(str_replace('\\', '/', $clean));
+		$dot = strrpos($basename, '.');
+		return $dot === false ? '' : strtolower(substr($basename, $dot + 1));
+	}
+
+	/**
+	 * Returns the allowed file preview mode keys.
+	 *
+	 * @return array
+	 */
+	private function getSupportedFileModes()
+	{
+		return ['text', 'json', 'markdown', 'css', 'ini', 'r', 'xml', 'yaml'];
 	}
 
 	/**
